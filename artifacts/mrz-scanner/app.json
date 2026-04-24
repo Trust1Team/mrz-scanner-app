@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "MRZ Scanner",
+    "slug": "mrz-scanner",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "scheme": "mrz-scanner",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D1117"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.mrzscanner.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to scan MRZ codes on ID documents and passports.",
+        "NSMicrophoneUsageDescription": "Microphone access is required for camera recording on iOS."
+      }
+    },
+    "android": {
+      "package": "com.mrzscanner.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.FLASHLIGHT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow MRZ Scanner to access your camera to scan documents.",
+          "microphonePermission": "Allow MRZ Scanner to access your microphone.",
+          "recordAudioAndroid": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
