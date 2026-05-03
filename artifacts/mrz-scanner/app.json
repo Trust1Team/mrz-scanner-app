@@ -33,12 +33,7 @@
     },
     "plugins": [
       "expo-dev-client",
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
       "expo-web-browser",
       [
@@ -51,8 +46,7 @@
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     },
     "extra": {
       "eas": {
