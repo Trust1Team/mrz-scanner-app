@@ -1,5 +1,5 @@
 packages:
-  - artifacts/*
+  - artifacts/mrz-scanner
 
 catalog:
   '@tanstack/react-query': ^5.90.21
