@@ -22,14 +22,7 @@ catalogs:
 importers:
 
   .:
-    dependencies:
-      '@replit/connectors-sdk':
-        specifier: ^0.4.0
-        version: 0.4.0
     devDependencies:
-      prettier:
-        specifier: ^3.8.1
-        version: 3.8.1
       typescript:
         specifier: ~5.9.2
         version: 5.9.3
@@ -1295,9 +1288,6 @@ packages:
 
   '@react-navigation/routers@7.5.3':
     resolution: {integrity: sha512-1tJHg4KKRJuQ1/EvJxatrMef3NZXEPzwUIUZ3n1yJ2t7Q97siwRtbynRpQG9/69ebbtiZ8W3ScOZF/OmhvM4Rg==}
-
-  '@replit/connectors-sdk@0.4.0':
-    resolution: {integrity: sha512-wRuktfdoBsM19NJUi24xzCkQ+idglmU4Cq2ZWvTAnNUVGdcMmn3rLN1F1/MNZCc2HdG+awcGa81XMLpZXZujUg==}
 
   '@sinclair/typebox@0.27.10':
     resolution: {integrity: sha512-MTBk/3jGLNB2tVxv6uLlFh1iu64iYOQ2PbdOSK3NW8JZsmlaOh2q6sdtKowBhfw8QFLmYNzTW4/oK4uATIi6ZA==}
@@ -2965,11 +2955,6 @@ packages:
   postcss@8.4.49:
     resolution: {integrity: sha512-OCVPnIObs4N29kxTjzLfUryOkvZEq+pf8jTF0lg8E7uETuWHA+v7j3c/xJmiqpX450191LlmZfUKkXxkTry7nA==}
     engines: {node: ^10 || ^12 || >=14}
-
-  prettier@3.8.1:
-    resolution: {integrity: sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg==}
-    engines: {node: '>=14'}
-    hasBin: true
 
   pretty-bytes@5.6.0:
     resolution: {integrity: sha512-FFw039TmrBqFK8ma/7OL3sDz/VytdtJr044/QUJtH0wK9lb9jLq9tJyIxUwtQJHwar2BqtiA4iCWSwo9JLkzFg==}
@@ -5187,8 +5172,6 @@ snapshots:
     dependencies:
       nanoid: 3.3.11
 
-  '@replit/connectors-sdk@0.4.0': {}
-
   '@sinclair/typebox@0.27.10': {}
 
   '@sindresorhus/is@4.6.0': {}
@@ -7093,8 +7076,6 @@ snapshots:
       nanoid: 3.3.11
       picocolors: 1.1.1
       source-map-js: 1.2.1
-
-  prettier@3.8.1: {}
 
   pretty-bytes@5.6.0: {}
 
