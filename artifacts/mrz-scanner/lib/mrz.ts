@@ -570,6 +570,84 @@ export function extractMRZFromText(text: string): string[] | null {
 }
 
 /**
+ * Character-level vote accumulator.
+ *
+ * Collects extracted MRZ lines from multiple OCR frames and builds a
+ * character-by-character consensus: for each position the most-seen value
+ * wins. This is the same technique used by commercial MRZ SDKs (Dynamsoft,
+ * Regula, etc.) to eliminate per-frame OCR noise without requiring every
+ * single frame to parse perfectly.
+ *
+ * Usage:
+ *   const acc = new MRZVoteAccumulator();
+ *   acc.addLines(extractMRZFromText(ocrText));   // repeat per frame
+ *   const parsed = parseMRZ(acc.consensus());    // try after each burst
+ *   acc.reset();                                 // on new scan session
+ */
+export class MRZVoteAccumulator {
+  // votes[lineIdx] → Map<charIdx, Map<char, count>>
+  private votes: Array<Map<number, Map<string, number>>> = [];
+  private _frameCount = 0;
+  private _missedBursts = 0;
+
+  /** Add normalized MRZ lines from a single OCR frame. */
+  addLines(lines: string[]): void {
+    this._frameCount++;
+    this._missedBursts = 0;
+    while (this.votes.length < lines.length) this.votes.push(new Map());
+    for (let li = 0; li < lines.length; li++) {
+      for (let ci = 0; ci < lines[li].length; ci++) {
+        if (!this.votes[li].has(ci)) this.votes[li].set(ci, new Map());
+        const counts = this.votes[li].get(ci)!;
+        const ch = lines[li][ci];
+        counts.set(ch, (counts.get(ch) ?? 0) + 1);
+      }
+    }
+  }
+
+  /** Record a burst where no MRZ lines were found in any frame. */
+  recordMiss(): void { this._missedBursts++; }
+
+  /** True when 3+ consecutive bursts had no MRZ — card was removed. */
+  get stalledOut(): boolean { return this._missedBursts >= 3; }
+
+  /** Total OCR frames accumulated since last reset. */
+  get frameCount(): number { return this._frameCount; }
+
+  /**
+   * Build consensus lines from accumulated votes.
+   * At each position the character with the most votes wins;
+   * non-'<' characters break ties so real data beats filler.
+   */
+  consensus(): string[] | null {
+    if (this.votes.length === 0) return null;
+    return this.votes.map((charMap) => {
+      if (charMap.size === 0) return "";
+      const maxIdx = Math.max(...charMap.keys());
+      let line = "";
+      for (let ci = 0; ci <= maxIdx; ci++) {
+        const counts = charMap.get(ci);
+        if (!counts || counts.size === 0) { line += "<"; continue; }
+        let best = "<", bestCount = 0;
+        for (const [ch, count] of counts) {
+          if (count > bestCount || (count === bestCount && ch !== "<" && best === "<")) {
+            best = ch; bestCount = count;
+          }
+        }
+        line += best;
+      }
+      return line;
+    });
+  }
+
+  reset(): void {
+    this.votes = [];
+    this._frameCount = 0;
+    this._missedBursts = 0;
+  }
+}
+
+/**
  * Quick validity check: does this look like valid MRZ text at all?
  */
 export function looksLikeMRZ(text: string): boolean {
