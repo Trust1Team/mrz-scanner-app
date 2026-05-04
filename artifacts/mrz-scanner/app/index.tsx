@@ -223,9 +223,11 @@ function NativeScannerUI() {
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
 
+  const isLandscape = screenW > screenH;
+
   const [permission, requestPermission] = useCameraPermissions();
-  const [torchMode, setTorchMode] = useState<"off" | "manual" | "auto">("off");
-  const torchOn = torchMode !== "off";
+  const [torchMode, setTorchMode] = useState<"off" | "manual">("off");
+  const torchOn = torchMode === "manual";
 
   const [scanPhase, setScanPhase] = useState<ScanPhase>("scanning");
   const scanPhaseRef = useRef<ScanPhase>("scanning");
@@ -298,18 +300,27 @@ function NativeScannerUI() {
         const photo = await capture({ quality: 0.92, base64: false, skipProcessing: false });
 
         if (photo) {
-          // Crop tightly to just the MRZ strip at the bottom of the frame
+          // ── Crop to MRZ strip ──────────────────────────────────────────────
+          // Some Android devices return photo.width/height in *sensor* (pre-EXIF)
+          // coordinates even when skipProcessing=false.  We detect this by
+          // comparing the image orientation to the current screen orientation
+          // and swap the axes when they disagree, so the crop fractions always
+          // map to the correct physical dimension.
           let ocrUri: string | null = null;
           try {
-            const imgW = photo.width  ?? 1080;
-            const imgH = photo.height ?? 1440;
-            const cropTop = Math.floor(imgH * cropTopFrac);
-            const cropH   = Math.floor(imgH * (cropBotFrac - cropTopFrac));
-            const targetW = Math.min(imgW, 1600);
+            const rawW = photo.width  ?? 1080;
+            const rawH = photo.height ?? 1440;
+            const screenIsPortrait = screenH > screenW;
+            const imageIsPortrait  = rawH > rawW;
+            const displayW = screenIsPortrait === imageIsPortrait ? rawW : rawH;
+            const displayH = screenIsPortrait === imageIsPortrait ? rawH : rawW;
+            const cropTop = Math.floor(displayH * cropTopFrac);
+            const cropH   = Math.max(1, Math.floor(displayH * (cropBotFrac - cropTopFrac)));
+            const targetW = Math.min(displayW, 1600);
             const manipulated = await ImageManipulator.manipulateAsync(
               photo.uri,
               [
-                { crop: { originX: 0, originY: cropTop, width: imgW, height: cropH } },
+                { crop: { originX: 0, originY: cropTop, width: displayW, height: cropH } },
                 { resize: { width: targetW } },
               ],
               { compress: 0.95, format: ImageManipulator.SaveFormat.JPEG }
@@ -359,7 +370,7 @@ function NativeScannerUI() {
     return () => { cancelled = true; };
   }, [permission?.granted, cameraReady, scanPhase, capture, updateHint, showResultScreen, screenW, screenH]);
 
-  // ── Auto-torch: check brightness once at 1 s ─────────────────────────────
+  // ── Auto-torch: single brightness check at 1 s after camera ready ──────────
   useEffect(() => {
     if (!permission?.granted || !cameraReady) return;
     const check = async () => {
@@ -367,7 +378,7 @@ function NativeScannerUI() {
       if (!photo) return;
       const len = photo.base64?.length ?? 0;
       if (len > 0 && len < 3500 && torchMode === "off") {
-        setTorchMode("auto");
+        setTorchMode("manual"); // auto-enable torch in dark scenes
         updateHint("Low light — torch on");
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
@@ -492,9 +503,10 @@ function NativeScannerUI() {
   const isScanning = scanPhase === "scanning";
   const isFound    = scanPhase === "found";
 
-  // Zone geometry for hint positioning
+  // Zone geometry — used for hint positioning so the hint sits just above the box
   const zone = getMRZZone(screenW, screenH);
-  const hintBottom = screenH - (screenH * zone.topFrac) + 18;
+  // Distance from bottom of screen to the top edge of the zone
+  const hintBottom = screenH * (1 - zone.topFrac) + (isLandscape ? 10 : 18);
 
   return (
     <View style={s.root}>
@@ -506,15 +518,24 @@ function NativeScannerUI() {
         autofocus="on"
         onCameraReady={() => {
           setCameraReady(true);
-          updateHint("Hold MRZ strip inside the box");
+          updateHint("Align the MRZ strip inside the box");
         }}
       />
 
       <ScanOverlay scanning={isScanning} detected={isFound} />
 
-      {/* Minimal top bar — title + torch only */}
-      <View style={[s.topBar, { paddingTop: insets.top + 10 }]}>
-        <Text style={s.appTitle}>MRZ Scanner</Text>
+      {/* Top bar — title + torch */}
+      <View
+        style={[
+          s.topBar,
+          {
+            paddingTop:   isLandscape ? insets.top + 6  : insets.top + 10,
+            paddingLeft:  insets.left  + (isLandscape ? 16 : 20),
+            paddingRight: insets.right + (isLandscape ? 16 : 20),
+          },
+        ]}
+      >
+        <Text style={[s.appTitle, isLandscape && s.appTitleSmall]}>MRZ Scanner</Text>
         <Pressable
           testID="torch-button"
           onPress={toggleTorch}
@@ -531,7 +552,7 @@ function NativeScannerUI() {
         </Pressable>
       </View>
 
-      {/* Hint pill — floats just above the MRZ guide strip */}
+      {/* Hint pill — floats just above the MRZ guide box */}
       <Animated.View
         style={[s.hintContainer, { bottom: hintBottom, opacity: hintAnim }]}
         pointerEvents="none"
@@ -541,14 +562,26 @@ function NativeScannerUI() {
         </View>
       </Animated.View>
 
-      {/* Bottom controls — pause + manual entry */}
-      <View style={[s.bottomControls, { paddingBottom: insets.bottom + 16 }]}>
+      {/* Bottom controls — compact in landscape to fit below the zone */}
+      <View
+        style={[
+          s.bottomControls,
+          {
+            paddingBottom:  insets.bottom + (isLandscape ? 6 : 16),
+            paddingLeft:    insets.left   + (isLandscape ? 16 : 0),
+            paddingRight:   insets.right  + (isLandscape ? 16 : 0),
+          },
+        ]}
+      >
         <Pressable
           testID="manual-entry-button"
           onPress={() => setShowManualEntry(true)}
-          style={({ pressed }) => [s.sideBtn, { opacity: pressed ? 0.7 : 1 }]}
+          style={({ pressed }) => [
+            isLandscape ? s.sideBtnSmall : s.sideBtn,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
         >
-          <Feather name="edit-2" size={20} color="#FFFFFF" />
+          <Feather name="edit-2" size={isLandscape ? 16 : 20} color="#FFFFFF" />
         </Pressable>
 
         <Pressable
@@ -556,7 +589,7 @@ function NativeScannerUI() {
           onPress={togglePause}
           disabled={isFound}
           style={({ pressed }) => [
-            s.pauseBtn,
+            isLandscape ? s.pauseBtnSmall : s.pauseBtn,
             {
               opacity: pressed || isFound ? 0.5 : 1,
               backgroundColor: isScanning ? "rgba(255,255,255,0.18)" : "rgba(0,255,136,0.25)",
@@ -564,10 +597,14 @@ function NativeScannerUI() {
             },
           ]}
         >
-          <Feather name={isScanning ? "pause" : "play"} size={26} color={isScanning ? "#FFFFFF" : "#00FF88"} />
+          <Feather
+            name={isScanning ? "pause" : "play"}
+            size={isLandscape ? 20 : 26}
+            color={isScanning ? "#FFFFFF" : "#00FF88"}
+          />
         </Pressable>
 
-        <View style={s.sideBtn} />
+        <View style={isLandscape ? s.sideBtnSmall : s.sideBtn} />
       </View>
 
       <ManualEntryModal
@@ -736,10 +773,19 @@ const s = StyleSheet.create({
     width: 48, height: 48, alignItems: "center", justifyContent: "center",
     borderRadius: 24, backgroundColor: "rgba(255,255,255,0.12)",
   },
+  sideBtnSmall: {
+    width: 36, height: 36, alignItems: "center", justifyContent: "center",
+    borderRadius: 18, backgroundColor: "rgba(255,255,255,0.12)",
+  },
   pauseBtn: {
     width: 66, height: 66, borderRadius: 33,
     borderWidth: 2, alignItems: "center", justifyContent: "center",
   },
+  pauseBtnSmall: {
+    width: 48, height: 48, borderRadius: 24,
+    borderWidth: 2, alignItems: "center", justifyContent: "center",
+  },
+  appTitleSmall: { fontSize: 14 },
 
   permissionContainer: {
     flex: 1, backgroundColor: "#0D1117",
