@@ -31,7 +31,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { ScanOverlay } from "@/components/ScanOverlay";
 import { parseMRZ, extractMRZFromText, ParsedMRZ } from "@/lib/mrz";
 import { setLastResult } from "@/lib/resultStore";
@@ -486,6 +486,23 @@ function NativeScannerUI() {
     return () => { clearTimeout(t); clearInterval(iv); };
   }, [permission?.granted, cameraReady, capture, updateHint]);
 
+  // ── Restore scanning state when screen regains focus ─────────────────────
+  // After router.push("/result") + router.back(), scanPhase is still "found"
+  // and the scan loop never restarts. useFocusEffect fires whenever this
+  // screen becomes active again — we reset everything to "scanning" so the
+  // loop useEffect re-runs and a new scan can begin.
+  useFocusEffect(
+    useCallback(() => {
+      if (scanPhaseRef.current === "found") {
+        captureActiveRef.current = false; // release any stale capture mutex
+        setFrameCount(0);
+        scanPhaseRef.current = "scanning";
+        setScanPhase("scanning");
+        updateHint("Hold document in frame — scanning");
+      }
+    }, [updateHint])
+  );
+
   // ── Controls ──────────────────────────────────────────────────────────────
   const togglePause = useCallback(() => {
     if (scanPhaseRef.current === "scanning") {
@@ -493,7 +510,9 @@ function NativeScannerUI() {
       setScanPhase("paused");
       updateHint("Paused — tap ▶ to resume");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } else if (scanPhaseRef.current === "paused") {
+    } else if (scanPhaseRef.current === "paused" || scanPhaseRef.current === "found") {
+      // Resume from paused — also handles stale "found" state as a safety net
+      captureActiveRef.current = false;
       setFrameCount(0);
       scanPhaseRef.current = "scanning";
       setScanPhase("scanning");
