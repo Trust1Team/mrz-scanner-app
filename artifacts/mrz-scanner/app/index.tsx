@@ -27,6 +27,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { router, useFocusEffect } from "expo-router";
 import { ScanOverlay, getMRZZone } from "@/components/ScanOverlay";
 import { parseMRZ, extractMRZFromText, ParsedMRZ } from "@/lib/mrz";
@@ -236,10 +237,18 @@ function NativeScannerUI() {
   const [manualInput, setManualInput] = useState("");
   const [hint, setHint] = useState("Initialising camera…");
 
-  const hintAnim        = useRef(new Animated.Value(1)).current;
-  const cameraRef       = useRef<CameraView | null>(null);
+  const hintAnim           = useRef(new Animated.Value(1)).current;
+  const cameraRef          = useRef<CameraView | null>(null);
   const captureActiveRef   = useRef(false);
   const consecutiveHitsRef = useRef(0);
+
+  // ── Unlock all orientations so landscape works regardless of system lock ──
+  useEffect(() => {
+    ScreenOrientation.unlockAsync().catch(() => {});
+    return () => {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    };
+  }, []);
 
   // ── Hint update with fade ───────────────────────────────────────────────────
   const updateHint = useCallback(
@@ -300,32 +309,29 @@ function NativeScannerUI() {
         const photo = await capture({ quality: 0.92, base64: false, skipProcessing: false });
 
         if (photo) {
-          // ── Crop to MRZ strip ──────────────────────────────────────────────
-          // Some Android devices return photo.width/height in *sensor* (pre-EXIF)
-          // coordinates even when skipProcessing=false.  We detect this by
-          // comparing the image orientation to the current screen orientation
-          // and swap the axes when they disagree, so the crop fractions always
-          // map to the correct physical dimension.
+          // ── Two-step crop to MRZ strip ────────────────────────────────────
+          // Step 1: resize to a known width.  This forces ImageManipulator to
+          // fully decode the JPEG — which applies EXIF rotation to pixels —
+          // and returns the correct *display* width/height.  Using photo.width/
+          // photo.height directly is unreliable because some Android camera
+          // drivers report sensor (pre-EXIF) dimensions even with skipProcessing
+          // = false, causing the crop to cut the wrong area.
+          // Step 2: crop to the MRZ strip using the now-correct display height.
           let ocrUri: string | null = null;
           try {
-            const rawW = photo.width  ?? 1080;
-            const rawH = photo.height ?? 1440;
-            const screenIsPortrait = screenH > screenW;
-            const imageIsPortrait  = rawH > rawW;
-            const displayW = screenIsPortrait === imageIsPortrait ? rawW : rawH;
-            const displayH = screenIsPortrait === imageIsPortrait ? rawH : rawW;
-            const cropTop = Math.floor(displayH * cropTopFrac);
-            const cropH   = Math.max(1, Math.floor(displayH * (cropBotFrac - cropTopFrac)));
-            const targetW = Math.min(displayW, 1600);
-            const manipulated = await ImageManipulator.manipulateAsync(
+            const sized = await ImageManipulator.manipulateAsync(
               photo.uri,
-              [
-                { crop: { originX: 0, originY: cropTop, width: displayW, height: cropH } },
-                { resize: { width: targetW } },
-              ],
+              [{ resize: { width: 1200 } }],
+              { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
+            );
+            const cropY = Math.floor(sized.height * cropTopFrac);
+            const cropH = Math.max(1, Math.floor(sized.height * (cropBotFrac - cropTopFrac)));
+            const cropped = await ImageManipulator.manipulateAsync(
+              sized.uri,
+              [{ crop: { originX: 0, originY: cropY, width: sized.width, height: cropH } }],
               { compress: 0.95, format: ImageManipulator.SaveFormat.JPEG }
             );
-            ocrUri = manipulated.uri;
+            ocrUri = cropped.uri;
           } catch {
             ocrUri = photo.uri;
           }
