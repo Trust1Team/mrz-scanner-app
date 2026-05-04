@@ -386,32 +386,40 @@ function NativeScannerUI() {
         const photo = await capture({ quality: 0.85, base64: false, skipProcessing: false });
 
         if (photo) {
-          // Update live thumbnail and flash the border
+          // Update live thumbnail — subtle flash only (not blinding white every frame)
           setLastCaptureUri(photo.uri);
           Animated.sequence([
-            Animated.timing(captureFlashAnim, { toValue: 1, duration: 60, useNativeDriver: true }),
-            Animated.timing(captureFlashAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+            Animated.timing(captureFlashAnim, { toValue: 0.25, duration: 80, useNativeDriver: true }),
+            Animated.timing(captureFlashAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
           ]).start();
 
-          // ── Preprocess: resize to ~1000 px for ML Kit performance ────────
-          // ML Kit reads the image from disk via URI — no base64 needed.
-          // Resizing also reduces peak memory usage on low-end devices.
           updateHint("Analysing…");
-          let resizedUri: string | null = null;
+
+          // ── Preprocess: crop to bottom 40% then resize to 1200 px wide ───
+          // MRZ zones are always at the bottom of documents. Cropping reduces
+          // noise from the rest of the page and dramatically improves ML Kit
+          // accuracy by keeping the MRZ lines large relative to image size.
+          let ocrUri: string | null = null;
           try {
-            const imgW = photo.width ?? 0;
-            const maxW = Math.min(imgW > 0 ? imgW : 1000, 1000);
+            const imgW = photo.width ?? 1000;
+            const imgH = photo.height ?? 1333;
+            const cropTop = Math.floor(imgH * 0.55);
+            const cropH = imgH - cropTop;
+            const targetW = Math.min(imgW, 1200);
             const manipulated = await ImageManipulator.manipulateAsync(
               photo.uri,
-              [{ resize: { width: maxW } }],
-              { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+              [
+                { crop: { originX: 0, originY: cropTop, width: imgW, height: cropH } },
+                { resize: { width: targetW } },
+              ],
+              { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
             );
-            resizedUri = manipulated.uri;
+            ocrUri = manipulated.uri;
           } catch {
-            resizedUri = photo.uri; // fall back to original
+            ocrUri = photo.uri;
           }
 
-          const ocrText = resizedUri ? await performLocalOCR(resizedUri) : null;
+          const ocrText = ocrUri ? await performLocalOCR(ocrUri) : null;
           console.log(`[MRZ] frame ${localFrame} ocrText:`, JSON.stringify(ocrText));
 
           if (ocrText) {
@@ -425,20 +433,21 @@ function NativeScannerUI() {
                 showResultSheet(parsed, photo.uri);
                 return; // exit loop — MRZ found
               }
-              // OCR found text, MRZ structure detected, but parse returned null
-              updateHint("MRZ pattern found — hold steadier for better focus");
+              updateHint("MRZ detected — hold steadier for better focus");
             } else {
-              // OCR returned text but no MRZ pattern could be extracted
-              const preview = ocrText.replace(/\n/g, " ").substring(0, 40);
+              const preview = ocrText.replace(/\n/g, " ").substring(0, 60);
               console.log(`[MRZ] frame ${localFrame} no MRZ pattern in: "${preview}"`);
-              updateHint("Text seen — align MRZ lines in frame");
+              updateHint("Text seen — align MRZ lines at bottom of frame");
             }
           } else {
-            updateHint("No text — point camera at MRZ zone");
+            updateHint("No text — point at MRZ zone at bottom of document");
           }
         }
 
-        // ML Kit typically completes in 200–500 ms — no extra delay needed.
+        // Wait between frames so the camera exposure can stabilise and the UI
+        // doesn't flicker. 900 ms gives good throughput (~1 scan/sec) while
+        // keeping the preview steady.
+        await delay(900);
       }
     };
 
