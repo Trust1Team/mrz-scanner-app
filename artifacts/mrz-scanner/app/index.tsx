@@ -29,7 +29,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import { router, useFocusEffect } from "expo-router";
 import { ScanOverlay, getMRZZone } from "@/components/ScanOverlay";
-import { parseMRZ, extractMRZFromText, ParsedMRZ } from "@/lib/mrz";
+import { parseMRZ, extractMRZFromText, ParsedMRZ, MRZVoteAccumulator } from "@/lib/mrz";
 import { setLastResult } from "@/lib/resultStore";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,6 +240,7 @@ function NativeScannerUI() {
   const cameraRef          = useRef<CameraView | null>(null);
   const captureActiveRef   = useRef(false);
   const consecutiveHitsRef = useRef(0);
+  const accumulatorRef     = useRef(new MRZVoteAccumulator());
 
   // ── Hint update with fade ───────────────────────────────────────────────────
   const updateHint = useCallback(
@@ -280,31 +281,29 @@ function NativeScannerUI() {
     router.push("/result");
   }, []);
 
-  // ── Continuous scan loop — burst strategy ──────────────────────────────────
+  // ── Continuous scan loop — vote accumulation strategy ──────────────────────
   useEffect(() => {
     if (!permission?.granted || !cameraReady || scanPhase !== "scanning") return;
 
     let cancelled = false;
     const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const accumulator = accumulatorRef.current;
 
     // Zone fractions kept in sync with ScanOverlay/getMRZZone.
-    // Small margin outside the box so cards slightly off-centre still hit.
+    // Small outward margin so cards slightly off-centre still hit.
     const zone = getMRZZone(screenW, screenH);
     const cropTopFrac = Math.max(0,   zone.topFrac    - 0.03);
     const cropBotFrac = Math.min(1,   zone.bottomFrac + 0.02);
 
     /**
-     * Crop a raw photo to the MRZ strip.
+     * Pass 1 — Two-step crop to MRZ strip (fast, precise).
      *
-     * Two-step approach is required on Android:
-     *   Step 1 – resize  → forces full JPEG decode which bakes EXIF rotation
-     *             into pixels and returns correct display width/height.
-     *   Step 2 – crop    → uses those verified display dimensions.
-     * Using photo.width/height directly is unreliable because many Android
-     * camera drivers report sensor-space (pre-EXIF) dimensions even when
-     * skipProcessing=false.
-     * PNG is used for the final crop so JPEG block artefacts never smear
-     * the thin MRZ characters before ML Kit reads them.
+     * Step 1: resize forces a full JPEG decode which bakes EXIF rotation into
+     * pixels and returns correct display-space width/height.  Using
+     * photo.width/height directly is unreliable on Android — many drivers
+     * return sensor-space dimensions even with skipProcessing=false.
+     * Step 2: crop using those verified display dimensions.
+     * PNG output eliminates JPEG block artefacts on thin MRZ characters.
      */
     const cropToMRZ = async (photoUri: string): Promise<string> => {
       const sized = await ImageManipulator.manipulateAsync(
@@ -317,67 +316,110 @@ function NativeScannerUI() {
       const cropped = await ImageManipulator.manipulateAsync(
         sized.uri,
         [{ crop: { originX: 0, originY: cropY, width: sized.width, height: cropH } }],
-        { compress: 1, format: ImageManipulator.SaveFormat.PNG }   // lossless for OCR
+        { compress: 1, format: ImageManipulator.SaveFormat.PNG }
       );
       return cropped.uri;
     };
 
+    /**
+     * Pass 2 — Full-frame resize (fallback when the card is slightly off-centre).
+     * Overlay is a UX guide, not a hard constraint; ML Kit finds MRZ anywhere.
+     */
+    const fullFrameResize = async (photoUri: string): Promise<string> => {
+      const sized = await ImageManipulator.manipulateAsync(
+        photoUri,
+        [{ resize: { width: 1200 } }],
+        { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      return sized.uri;
+    };
+
     const loop = async () => {
       await delay(500); // let camera auto-exposure settle
+      accumulator.reset();
 
       while (!cancelled && scanPhaseRef.current === "scanning") {
         // ── Burst: capture 3 frames ~350 ms apart ─────────────────────────
-        const rawFrames: { uri: string; thumb: string }[] = [];
+        const rawFrames: string[] = [];
+        let thumbUri: string | null = null;
         for (let f = 0; f < 3 && !cancelled && scanPhaseRef.current === "scanning"; f++) {
           const photo = await capture({ quality: 0.92, base64: false, skipProcessing: false });
-          if (photo) rawFrames.push({ uri: photo.uri, thumb: photo.uri });
+          if (photo) {
+            if (!thumbUri) thumbUri = photo.uri;
+            rawFrames.push(photo.uri);
+          }
           if (f < 2) await delay(350);
         }
         if (rawFrames.length === 0) { await delay(400); continue; }
 
-        // ── Crop all frames + OCR in parallel ─────────────────────────────
-        type Hit = { parsed: ParsedMRZ; thumbUri: string };
-        const hits = (
-          await Promise.all(
-            rawFrames.map(async ({ uri, thumb }) => {
-              try {
-                const ocrUri = await cropToMRZ(uri);
-                const text   = await performLocalOCR(ocrUri);
-                console.log("[MRZ] ocr frame:", JSON.stringify(text?.substring(0, 80)));
-                if (!text) return null;
-                const lines  = extractMRZFromText(text);
-                if (!lines)  return null;
-                const parsed = parseMRZ(lines);
-                if (!parsed) return null;
-                return { parsed, thumbUri: thumb } as Hit;
-              } catch { return null; }
-            })
-          )
-        ).filter((h): h is Hit => h !== null);
+        // ── Two-pass OCR on all frames in parallel; feed votes ─────────────
+        let burstHits = 0;
+        await Promise.all(
+          rawFrames.map(async (uri) => {
+            try {
+              // Pass 1: tight crop
+              const croppedUri = await cropToMRZ(uri);
+              let text = await performLocalOCR(croppedUri);
+              let lines = text ? extractMRZFromText(text) : null;
 
-        if (hits.length > 0) {
-          // Pick the candidate with the fewest field errors (best checksum pass)
-          const best = hits.reduce((a, b) =>
-            a.parsed.errors.length <= b.parsed.errors.length ? a : b
-          );
-          consecutiveHitsRef.current++;
-          console.log(
-            `[MRZ] burst hit ${consecutiveHitsRef.current}/2`,
-            best.parsed.format,
-            `errors=${best.parsed.errors.length}`,
-            `(${hits.length}/${rawFrames.length} frames parsed)`
-          );
-          if (consecutiveHitsRef.current >= 2) {
-            showResultScreen(best.parsed, best.thumbUri);
-            return;
+              // Pass 2: full frame (handles slight misalignment)
+              if (!lines) {
+                const fullUri = await fullFrameResize(uri);
+                text = await performLocalOCR(fullUri);
+                lines = text ? extractMRZFromText(text) : null;
+              }
+
+              if (lines) {
+                accumulator.addLines(lines);
+                burstHits++;
+                console.log(
+                  `[MRZ] frame: ${lines.length} lines → total ${accumulator.frameCount} frames`,
+                  lines.map(l => l.substring(0, 15)).join(" | ")
+                );
+              }
+            } catch (e) {
+              console.warn("[MRZ] frame error:", e);
+            }
+          })
+        );
+
+        // ── Evaluate consensus after every burst ───────────────────────────
+        if (burstHits === 0) {
+          accumulator.recordMiss();
+          if (accumulator.stalledOut) {
+            // Card removed — reset all accumulated votes
+            accumulator.reset();
+            consecutiveHitsRef.current = 0;
           }
-          updateHint("MRZ detected — hold still…");
-        } else {
-          consecutiveHitsRef.current = 0;
           updateHint("Align the MRZ strip inside the box");
+        } else {
+          const consensusLines = accumulator.consensus();
+          const frames = accumulator.frameCount;
+
+          if (consensusLines) {
+            const parsed = parseMRZ(consensusLines);
+            if (parsed) {
+              const errs = parsed.errors.length;
+              console.log(`[MRZ] consensus ${parsed.format} errors=${errs} frames=${frames}`);
+
+              // Accept when: fully valid, OR minor errors after many frames
+              if (errs === 0 || (errs <= 1 && frames >= 9)) {
+                consecutiveHitsRef.current++;
+                if (consecutiveHitsRef.current >= 2) {
+                  showResultScreen(parsed, thumbUri);
+                  return;
+                }
+                updateHint("MRZ detected — hold still…");
+              } else {
+                updateHint(`Scanning… (${frames} frame${frames === 1 ? "" : "s"})`);
+              }
+            } else {
+              updateHint("Align the MRZ strip inside the box");
+            }
+          }
         }
 
-        // Short gap between bursts — the burst itself took ~1 s
+        // Short gap between bursts (burst itself takes ~1 s)
         await delay(300);
       }
     };
@@ -408,8 +450,9 @@ function NativeScannerUI() {
   useFocusEffect(
     useCallback(() => {
       if (scanPhaseRef.current === "found") {
-        captureActiveRef.current  = false;
+        captureActiveRef.current   = false;
         consecutiveHitsRef.current = 0;
+        accumulatorRef.current.reset();
         scanPhaseRef.current = "scanning";
         setScanPhase("scanning");
         updateHint("Hold the MRZ strip inside the box");
