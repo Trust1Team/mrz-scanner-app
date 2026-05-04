@@ -304,6 +304,10 @@ function NativeScannerUI() {
   // This prevents two takePictureAsync() calls from overlapping.
   const captureActiveRef = useRef(false);
 
+  // Two consecutive valid parses required before navigating.
+  // Prevents false positives from a single blurry/partial OCR frame.
+  const consecutiveHitsRef = useRef(0);
+
   // ── Hint update with fade ───────────────────────────────────────────────────
   const updateHint = useCallback(
     (text: string) => {
@@ -395,24 +399,28 @@ function NativeScannerUI() {
 
           updateHint("Analysing…");
 
-          // ── Preprocess: crop to bottom 40% then resize to 1200 px wide ───
-          // MRZ zones are always at the bottom of documents. Cropping reduces
-          // noise from the rest of the page and dramatically improves ML Kit
-          // accuracy by keeping the MRZ lines large relative to image size.
+          // ── Preprocess: crop to the MRZ zone band then resize ─────────────
+          // The scan overlay places the MRZ zone at 44 %–74 % of screen height.
+          // We map those fractions onto the captured image and add a 10 %
+          // margin so slightly off-centre cards are still captured.
+          // Belgian eID MRZ lives in the bottom quarter of the card, so
+          // targeting 40 %–82 % of the image catches it reliably.
           let ocrUri: string | null = null;
           try {
             const imgW = photo.width ?? 1000;
             const imgH = photo.height ?? 1333;
-            const cropTop = Math.floor(imgH * 0.55);
-            const cropH = imgH - cropTop;
-            const targetW = Math.min(imgW, 1200);
+            const cropTopFrac = 0.38;   // 38 % from top — just above the zone
+            const cropBotFrac = 0.84;   // 84 % from top — below the MRZ strip
+            const cropTop = Math.floor(imgH * cropTopFrac);
+            const cropH  = Math.floor(imgH * (cropBotFrac - cropTopFrac));
+            const targetW = Math.min(imgW, 1400); // wide enough for all 44-char lines
             const manipulated = await ImageManipulator.manipulateAsync(
               photo.uri,
               [
                 { crop: { originX: 0, originY: cropTop, width: imgW, height: cropH } },
                 { resize: { width: targetW } },
               ],
-              { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
+              { compress: 0.95, format: ImageManipulator.SaveFormat.JPEG }
             );
             ocrUri = manipulated.uri;
           } catch {
@@ -429,25 +437,36 @@ function NativeScannerUI() {
               const parsed = parseMRZ(lines);
               console.log(`[MRZ] frame ${localFrame} parsed:`, parsed ? `${parsed.format} valid=${parsed.valid} errors=${JSON.stringify(parsed.errors)}` : "null");
               if (parsed) {
-                console.log(`[MRZ] navigating to result screen`);
-                showResultSheet(parsed, photo.uri);
-                return; // exit loop — MRZ found
+                consecutiveHitsRef.current++;
+                console.log(`[MRZ] hit ${consecutiveHitsRef.current}/2 — ${parsed.format} valid=${parsed.valid}`);
+                if (consecutiveHitsRef.current >= 2) {
+                  console.log(`[MRZ] confirmed — navigating to result`);
+                  showResultSheet(parsed, photo.uri);
+                  return; // exit loop
+                }
+                // First hit — wait one more frame to confirm
+                updateHint("MRZ detected — hold still…");
+                await delay(600); // short focused re-capture
+              } else {
+                consecutiveHitsRef.current = 0;
+                updateHint("MRZ pattern found — hold steadier");
               }
-              updateHint("MRZ detected — hold steadier for better focus");
             } else {
+              consecutiveHitsRef.current = 0;
               const preview = ocrText.replace(/\n/g, " ").substring(0, 60);
               console.log(`[MRZ] frame ${localFrame} no MRZ pattern in: "${preview}"`);
-              updateHint("Text seen — align MRZ lines at bottom of frame");
+              updateHint("Text seen — align MRZ strip in the frame");
             }
           } else {
-            updateHint("No text — point at MRZ zone at bottom of document");
+            consecutiveHitsRef.current = 0;
+            updateHint("No text — point at MRZ zone at bottom of card");
           }
         }
 
-        // Wait between frames so the camera exposure can stabilise and the UI
-        // doesn't flicker. 900 ms gives good throughput (~1 scan/sec) while
-        // keeping the preview steady.
-        await delay(900);
+        // Pause between frames: 1 400 ms lets the camera re-focus and the
+        // sensor exposure stabilise before the next capture. This is the main
+        // guard against capturing before the document is fully in frame.
+        await delay(1400);
       }
     };
 
@@ -480,9 +499,10 @@ function NativeScannerUI() {
       });
     };
 
-    // First check after 4 s (let scan loop settle first), then every 10 s
-    const t = setTimeout(() => check(), 4000);
-    const iv = setInterval(() => check(), 10000);
+    // First check at 800 ms so torch fires immediately if the scene is dark,
+    // then every 8 s to track changing light conditions.
+    const t = setTimeout(() => check(), 800);
+    const iv = setInterval(() => check(), 8000);
     return () => { clearTimeout(t); clearInterval(iv); };
   }, [permission?.granted, cameraReady, capture, updateHint]);
 
@@ -495,6 +515,7 @@ function NativeScannerUI() {
     useCallback(() => {
       if (scanPhaseRef.current === "found") {
         captureActiveRef.current = false; // release any stale capture mutex
+        consecutiveHitsRef.current = 0;  // reset confirmation counter
         setFrameCount(0);
         scanPhaseRef.current = "scanning";
         setScanPhase("scanning");
@@ -632,6 +653,7 @@ function NativeScannerUI() {
         style={StyleSheet.absoluteFill}
         facing="back"
         enableTorch={torchOn}
+        autofocus="on"
         onCameraReady={() => {
           setCameraReady(true);
           updateHint("Hold document in frame — scanning");
