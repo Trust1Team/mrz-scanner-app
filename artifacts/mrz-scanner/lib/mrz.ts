@@ -101,14 +101,83 @@ export function computeCheckDigit(input: string): string {
   return String(sum % 10);
 }
 
-function validateField(raw: string, checkChar: string): { valid: boolean; corrected: string } {
-  const expected = computeCheckDigit(raw);
-  if (expected === checkChar) return { valid: true, corrected: raw };
+/**
+ * Checksum-guided digit recovery.
+ *
+ * When OCR returns '<' in a position that should hold a digit (dates,
+ * doc numbers), this function brute-forces the missing digit(s) by trying
+ * 0-9 at each '<' position until the ICAO checksum passes.
+ *
+ * Supports up to 3 missing digits (≤ 1 000 combinations — runs in < 1 ms).
+ * Optional `isDate` flag validates MM and DD ranges to prune impossible guesses.
+ */
+function recoverByChecksum(
+  raw: string,
+  checkChar: string,
+  opts: { isDate?: boolean } = {}
+): { recovered: string; valid: boolean } {
+  // Fast path: already valid
+  if (computeCheckDigit(raw) === checkChar) return { recovered: raw, valid: true };
 
-  // Try OCR-corrected version
+  // Collect positions where '<' appears (not valid in purely numeric fields)
+  const positions: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "<") positions.push(i);
+  }
+  if (positions.length === 0 || positions.length > 3) {
+    return { recovered: raw, valid: false };
+  }
+
+  const chars = raw.split("");
+
+  function tryFill(posIdx: number): string | null {
+    if (posIdx >= positions.length) {
+      const candidate = chars.join("");
+      if (computeCheckDigit(candidate) !== checkChar) return null;
+      // For date fields, validate MM (01–12) and DD (01–31)
+      if (opts.isDate && candidate.length === 6) {
+        const mm = parseInt(candidate.substring(2, 4), 10);
+        const dd = parseInt(candidate.substring(4, 6), 10);
+        if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+      }
+      return candidate;
+    }
+    for (let d = 0; d <= 9; d++) {
+      chars[positions[posIdx]] = String(d);
+      const result = tryFill(posIdx + 1);
+      if (result) return result;
+    }
+    chars[positions[posIdx]] = "<"; // restore
+    return null;
+  }
+
+  const recovered = tryFill(0);
+  if (recovered) return { recovered, valid: true };
+  return { recovered: raw, valid: false };
+}
+
+function validateField(
+  raw: string,
+  checkChar: string,
+  opts: { isDate?: boolean } = {}
+): { valid: boolean; corrected: string } {
+  // 1. Direct checksum
+  if (computeCheckDigit(raw) === checkChar) return { valid: true, corrected: raw };
+
+  // 2. OCR letter→digit corrections
   const corrected = correctOCR(raw, "alphanumeric");
-  const correctedCheck = computeCheckDigit(corrected);
-  if (correctedCheck === checkChar) return { valid: true, corrected };
+  if (computeCheckDigit(corrected) === checkChar) return { valid: true, corrected };
+
+  // 3. Checksum-guided recovery of '<' chars that should be digits
+  const base = raw.includes("<") ? raw : corrected;
+  const recovered = recoverByChecksum(base, checkChar, opts);
+  if (recovered.valid) return { valid: true, corrected: recovered.recovered };
+
+  // Also try recovery on OCR-corrected version if different from raw
+  if (corrected !== raw && corrected.includes("<")) {
+    const r2 = recoverByChecksum(corrected, checkChar, opts);
+    if (r2.valid) return { valid: true, corrected: r2.recovered };
+  }
 
   return { valid: false, corrected: raw };
 }
@@ -198,14 +267,14 @@ function parseTD3(line1: string, line2: string): ParsedMRZ {
 
   const dobRaw = correctOCR(line2.substring(13, 19), "numeric");
   const dobCheck = line2[19];
-  const { valid: dobValid } = validateField(dobRaw, dobCheck);
+  const { valid: dobValid, corrected: dobCorrected } = validateField(dobRaw, dobCheck, { isDate: true });
   if (!dobValid) errors.push("Date of birth checksum mismatch");
 
   const sex = line2[20] === "M" ? "Male" : line2[20] === "F" ? "Female" : "Unspecified";
 
   const expiryRaw = correctOCR(line2.substring(21, 27), "numeric");
   const expiryCheck = line2[27];
-  const { valid: expiryValid } = validateField(expiryRaw, expiryCheck);
+  const { valid: expiryValid, corrected: expiryCorrected } = validateField(expiryRaw, expiryCheck, { isDate: true });
   if (!expiryValid) errors.push("Expiry date checksum mismatch");
 
   const optionalData = line2.substring(28, 42).replace(/</g, " ").trim();
@@ -224,9 +293,9 @@ function parseTD3(line1: string, line2: string): ParsedMRZ {
     givenNames,
     documentNumber: { raw: docNumRaw, value: docCorrected, checkDigit: docCheck, valid: docValid },
     nationality,
-    dateOfBirth: { raw: dobRaw, value: parseMRZDate(dobRaw, "dob"), checkDigit: dobCheck, valid: dobValid },
+    dateOfBirth: { raw: dobCorrected, value: parseMRZDate(dobCorrected, "dob"), checkDigit: dobCheck, valid: dobValid },
     sex,
-    expiryDate: { raw: expiryRaw, value: parseMRZDate(expiryRaw, "expiry"), checkDigit: expiryCheck, valid: expiryValid },
+    expiryDate: { raw: expiryCorrected, value: parseMRZDate(expiryCorrected, "expiry"), checkDigit: expiryCheck, valid: expiryValid },
     optionalData,
     compositeCheckDigit: { raw: compositeRaw, value: compositeExpected, checkDigit: compositeCheck, valid: compositeValid },
     rawLines: [line1, line2],
@@ -251,14 +320,14 @@ function parseTD1(line1: string, line2: string, line3: string): ParsedMRZ {
 
   const dobRaw = correctOCR(line2.substring(0, 6), "numeric");
   const dobCheck = line2[6];
-  const { valid: dobValid } = validateField(dobRaw, dobCheck);
+  const { valid: dobValid, corrected: dobCorrected } = validateField(dobRaw, dobCheck, { isDate: true });
   if (!dobValid) errors.push("Date of birth checksum mismatch");
 
   const sex = line2[7] === "M" ? "Male" : line2[7] === "F" ? "Female" : "Unspecified";
 
   const expiryRaw = correctOCR(line2.substring(8, 14), "numeric");
   const expiryCheck = line2[14];
-  const { valid: expiryValid } = validateField(expiryRaw, expiryCheck);
+  const { valid: expiryValid, corrected: expiryCorrected } = validateField(expiryRaw, expiryCheck, { isDate: true });
   if (!expiryValid) errors.push("Expiry date checksum mismatch");
 
   const nationality = correctOCR(line2.substring(15, 18), "alpha");
@@ -282,9 +351,9 @@ function parseTD1(line1: string, line2: string, line3: string): ParsedMRZ {
     givenNames,
     documentNumber: { raw: docNumRaw, value: docCorrected, checkDigit: docCheck, valid: docValid },
     nationality,
-    dateOfBirth: { raw: dobRaw, value: parseMRZDate(dobRaw, "dob"), checkDigit: dobCheck, valid: dobValid },
+    dateOfBirth: { raw: dobCorrected, value: parseMRZDate(dobCorrected, "dob"), checkDigit: dobCheck, valid: dobValid },
     sex,
-    expiryDate: { raw: expiryRaw, value: parseMRZDate(expiryRaw, "expiry"), checkDigit: expiryCheck, valid: expiryValid },
+    expiryDate: { raw: expiryCorrected, value: parseMRZDate(expiryCorrected, "expiry"), checkDigit: expiryCheck, valid: expiryValid },
     optionalData: optionalData1,
     optionalData2,
     compositeCheckDigit: { raw: compositeRaw, value: compositeExpected, checkDigit: compositeCheck, valid: compositeValid },
@@ -313,14 +382,14 @@ function parseTD2(line1: string, line2: string): ParsedMRZ {
 
   const dobRaw = correctOCR(line2.substring(13, 19), "numeric");
   const dobCheck = line2[19];
-  const { valid: dobValid } = validateField(dobRaw, dobCheck);
+  const { valid: dobValid, corrected: dobCorrected } = validateField(dobRaw, dobCheck, { isDate: true });
   if (!dobValid) errors.push("Date of birth checksum mismatch");
 
   const sex = line2[20] === "M" ? "Male" : line2[20] === "F" ? "Female" : "Unspecified";
 
   const expiryRaw = correctOCR(line2.substring(21, 27), "numeric");
   const expiryCheck = line2[27];
-  const { valid: expiryValid } = validateField(expiryRaw, expiryCheck);
+  const { valid: expiryValid, corrected: expiryCorrected } = validateField(expiryRaw, expiryCheck, { isDate: true });
   if (!expiryValid) errors.push("Expiry date checksum mismatch");
 
   const optionalData = line2.substring(28, 35).replace(/</g, " ").trim();
@@ -339,9 +408,9 @@ function parseTD2(line1: string, line2: string): ParsedMRZ {
     givenNames,
     documentNumber: { raw: docNumRaw, value: docCorrected, checkDigit: docCheck, valid: docValid },
     nationality,
-    dateOfBirth: { raw: dobRaw, value: parseMRZDate(dobRaw, "dob"), checkDigit: dobCheck, valid: dobValid },
+    dateOfBirth: { raw: dobCorrected, value: parseMRZDate(dobCorrected, "dob"), checkDigit: dobCheck, valid: dobValid },
     sex,
-    expiryDate: { raw: expiryRaw, value: parseMRZDate(expiryRaw, "expiry"), checkDigit: expiryCheck, valid: expiryValid },
+    expiryDate: { raw: expiryCorrected, value: parseMRZDate(expiryCorrected, "expiry"), checkDigit: expiryCheck, valid: expiryValid },
     optionalData,
     compositeCheckDigit: { raw: compositeRaw, value: compositeExpected, checkDigit: compositeCheck, valid: compositeValid },
     rawLines: [line1, line2],
