@@ -531,7 +531,6 @@ export function extractMRZFromText(text: string): string[] | null {
     .map(normalizeLine)
     .filter((l) => /^[A-Z0-9<]{20,}$/.test(l));
 
-  console.log("[MRZ lib] extractMRZFromText candidate lines:", JSON.stringify(lines.map(l => `${l.length}:${l}`)));
 
   if (lines.length === 0) return null;
 
