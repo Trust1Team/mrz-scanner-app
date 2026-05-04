@@ -352,6 +352,8 @@ function parseTD2(line1: string, line2: string): ParsedMRZ {
 /**
  * Main entry point: parse MRZ lines into structured data.
  * Accepts 2 or 3 lines. Lines will be normalized before parsing.
+ * When the format cannot be determined exactly, attempts a best-effort
+ * parse by padding/trimming to the nearest standard length.
  */
 export function parseMRZ(lines: string[]): ParsedMRZ | null {
   if (!lines || lines.length < 2) return null;
@@ -368,6 +370,35 @@ export function parseMRZ(lines: string[]): ParsedMRZ | null {
     }
     if (format === "TD2" && normalized.length >= 2) {
       return parseTD2(normalized[0], normalized[1]);
+    }
+
+    // ── Best-effort for UNKNOWN format ─────────────────────────────────────
+    // OCR lines are close but not exact — pad/trim to nearest standard and try.
+    if (format === "UNKNOWN") {
+      const l0 = normalized[0];
+      const l1 = normalized[1];
+
+      // 3-line input → try TD1 (3 × 30)
+      if (normalized.length >= 3) {
+        try {
+          return parseTD1(padMRZ(normalized[0], 30), padMRZ(normalized[1], 30), padMRZ(normalized[2], 30));
+        } catch { /* fall through */ }
+      }
+
+      // 2-line input, longer lines → try TD3 (2 × 44)
+      if (l0.length >= 38 && l1.length >= 38) {
+        try { return parseTD3(padMRZ(l0, 44), padMRZ(l1, 44)); } catch { /* fall through */ }
+      }
+
+      // 2-line input, medium lines → try TD2 (2 × 36)
+      if (l0.length >= 28 && l1.length >= 28) {
+        try { return parseTD2(padMRZ(l0, 36), padMRZ(l1, 36)); } catch { /* fall through */ }
+      }
+
+      // Last resort: 2-line shorter → try TD3 anyway (most common document)
+      if (normalized.length >= 2) {
+        try { return parseTD3(padMRZ(l0, 44), padMRZ(l1, 44)); } catch { /* fall through */ }
+      }
     }
   } catch {
     return null;
@@ -412,13 +443,13 @@ export function extractMRZFromText(text: string): string[] | null {
   for (const raw of rawLines) {
     // Strip non-MRZ chars to measure the usable length
     const clean = raw.replace(/[^A-Z0-9<]/gi, "").toUpperCase();
-    if (clean.length >= 85 && clean.length <= 95) {
+    if (clean.length >= 83 && clean.length <= 92) {
+      // TD3: 2 × 44 = 88  (check BEFORE TD1 — shorter range is more specific)
+      expanded.push(clean.substring(0, 44), clean.substring(44));
+    } else if (clean.length >= 86 && clean.length <= 96) {
       // TD1: 3 × 30 = 90
       expanded.push(clean.substring(0, 30), clean.substring(30, 60), clean.substring(60));
-    } else if (clean.length >= 85 && clean.length <= 92) {
-      // TD3: 2 × 44 = 88
-      expanded.push(clean.substring(0, 44), clean.substring(44));
-    } else if (clean.length >= 68 && clean.length <= 76) {
+    } else if (clean.length >= 68 && clean.length <= 78) {
       // TD2: 2 × 36 = 72
       expanded.push(clean.substring(0, 36), clean.substring(36));
     } else {
