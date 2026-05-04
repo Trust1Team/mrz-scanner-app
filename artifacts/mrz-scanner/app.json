@@ -47,7 +47,7 @@
     "experiments": {
       "typedRoutes": true
     },
-    "owner": "trust1team",
+    "owner": "michallis",
     "extra": {
       "eas": {
         "projectId": "8536a670-85e2-484d-ae59-7d683365ba9d"
