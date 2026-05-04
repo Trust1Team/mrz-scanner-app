@@ -19,12 +19,14 @@ export interface MRZZoneGeometry {
 
 export function getMRZZone(screenW: number, screenH: number): MRZZoneGeometry {
   const isLandscape = screenW > screenH;
-  const topFrac    = isLandscape ? 0.50 : 0.72;
-  const bottomFrac = isLandscape ? 0.92 : 0.94;
+  // Portrait:  MRZ strip at 72–94 % of screen height
+  // Landscape: MRZ strip at 52–86 % — leaves ~14 % (≈100 px) below for controls
+  const topFrac    = isLandscape ? 0.52 : 0.72;
+  const bottomFrac = isLandscape ? 0.86 : 0.94;
   return {
     topFrac,
     bottomFrac,
-    width:  screenW * 0.96,
+    width:  screenW * 0.97,
     height: screenH * (bottomFrac - topFrac),
   };
 }
