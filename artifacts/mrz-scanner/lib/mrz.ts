@@ -222,18 +222,26 @@ function parseName(nameField: string): { surname: string; givenNames: string } {
 }
 
 /**
- * Normalize a raw MRZ line: strip whitespace, handle common OCR line artifacts
+ * Normalize a raw MRZ line: strip whitespace, handle common OCR line artifacts.
+ *
+ * Extra ML Kit–specific corrections:
+ *  • "·" (middle dot) and "•" appear when ML Kit misreads filler as a bullet
+ *  • "%" appears when ML Kit reads "<" in low-contrast passes
+ *  • "?" appears for unrecognised glyphs in OCR-B font
+ *  • "]" and "}" are corner-case misreads of "1" or "J"
  */
 function normalizeLine(line: string): string {
   return line
     .toUpperCase()
     .replace(/\s/g, "")
-    .replace(/[—–]/g, "<")  // dash variants → filler
+    .replace(/[—–\-]/g, "<")   // dash variants → filler
     .replace(/[`'´]/g, "<")
+    .replace(/[·•%?]/g, "<")   // ML Kit-specific filler misreads
     .replace(/\|/g, "1")
     .replace(/[.,]/g, "<")
-    .replace(/\]/g, "<")     // ] misread as filler
-    .substring(0, 60);       // safety cap (increased from 50)
+    .replace(/[\]})]/g, "<")   // bracket/brace misreads → filler
+    .replace(/\*/g, "<")
+    .substring(0, 60);          // safety cap
 }
 
 /**
@@ -484,6 +492,89 @@ export function parseMRZ(lines: string[]): ParsedMRZ | null {
 function padMRZ(line: string, len: number): string {
   if (line.length >= len) return line.substring(0, len);
   return line + "<".repeat(len - line.length);
+}
+
+/**
+ * Extract MRZ lines from an array of text lines returned by ML Kit's structured
+ * block/line API.  This is preferred over `extractMRZFromText` because ML Kit's
+ * line segmentation keeps characters that share a text baseline together even
+ * when they are separated by whitespace — so each MRZ row arrives as one entry
+ * rather than being split across multiple newlines in the raw text blob.
+ *
+ * Also handles the "fragment" case: when ML Kit treats `<` filler as a word
+ * separator and breaks one MRZ row into multiple short strings, this function
+ * concatenates adjacent MRZ-like fragments before trying to match.
+ *
+ * @param rawLines   Lines from ML Kit's `result.blocks[].lines[].text` array.
+ * @returns          Normalised MRZ lines ready to pass to `parseMRZ`, or null.
+ */
+export function extractMRZFromLines(rawLines: string[]): string[] | null {
+  if (!rawLines || rawLines.length === 0) return null;
+
+  // Step 1 – normalise each line exactly as extractMRZFromText does.
+  const normed = rawLines
+    .map((l) => l.replace(/ /g, "<").trim())   // spaces → filler, strip edge whitespace
+    .filter((l) => l.length > 0)
+    .map(normalizeLine)
+    .filter((l) => l.length > 0);
+
+  if (normed.length === 0) return null;
+
+  // Step 2 – try the standard extraction on the already-split lines.
+  //   Joining them back with \n and calling extractMRZFromText re-uses all
+  //   the matching / expansion logic without duplication.
+  const standard = extractMRZFromText(normed.join("\n"));
+  if (standard) return standard;
+
+  // Step 3 – "fragment merge": ML Kit broke MRZ rows on '<' boundaries so every
+  //   segment is shorter than the 20-char filter.  Collect only the fragments
+  //   that look like MRZ material (≥ 60 % of chars are [A-Z0-9<]) then
+  //   concatenate them all and split at the expected row length.
+  const mrzFragments = normed.filter((l) => {
+    const mrzChars = (l.match(/[A-Z0-9<]/g) ?? []).length;
+    return mrzChars >= 3 && mrzChars / l.length >= 0.60;
+  }).map((l) => l.replace(/[^A-Z0-9<]/g, ""));   // strip residual non-MRZ chars
+
+  if (mrzFragments.length === 0) return null;
+
+  const concat = mrzFragments.join("");
+  const len    = concat.length;
+
+  // Use a slightly wider tolerance than the standard extractor because the
+  // fragment count often causes 1–3 chars of over/under shoot.
+  if (len >= 84 && len <= 100) {
+    // TD1: 3 × 30 = 90
+    if (Math.abs(len - 90) <= Math.abs(len - 88)) {
+      return [padMRZ(concat.substring(0, 30), 30),
+              padMRZ(concat.substring(30, 60), 30),
+              padMRZ(concat.substring(60),     30)];
+    }
+  }
+  if (len >= 80 && len <= 96) {
+    // TD3: 2 × 44 = 88
+    if (Math.abs(len - 88) <= Math.abs(len - 90)) {
+      return [padMRZ(concat.substring(0, 44), 44),
+              padMRZ(concat.substring(44),     44)];
+    }
+  }
+  if (len >= 66 && len <= 80) {
+    // TD2: 2 × 36 = 72
+    return [padMRZ(concat.substring(0, 36), 36),
+            padMRZ(concat.substring(36),     36)];
+  }
+
+  // Wider fallback for heavily fragmented TD1 (accept 80–100 chars and pick nearest)
+  if (len >= 80 && len <= 100) {
+    return [padMRZ(concat.substring(0, 30), 30),
+            padMRZ(concat.substring(30, 60), 30),
+            padMRZ(concat.substring(60),     30)];
+  }
+  if (len >= 75 && len <= 100) {
+    return [padMRZ(concat.substring(0, 44), 44),
+            padMRZ(concat.substring(44),     44)];
+  }
+
+  return null;
 }
 
 /**
