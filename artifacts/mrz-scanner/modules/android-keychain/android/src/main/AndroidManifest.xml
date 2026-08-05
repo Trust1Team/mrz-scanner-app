@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  No extra permissions are required for KeyChain access.
+  The android.permission.USE_CREDENTIALS permission was removed in API 23
+  (Marshmallow); the KeyChain API itself is the permission gate now.
+-->
+<manifest package="expo.modules.androidkeychain" />
