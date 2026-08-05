@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Certificate Flows — Trust1Team MRZ Scanner</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      padding: 40px 24px 80px;
+    }
+
+    header {
+      max-width: 960px;
+      margin: 0 auto 48px;
+      border-bottom: 1px solid #21262d;
+      padding-bottom: 28px;
+    }
+    header .badge {
+      display: inline-block;
+      background: rgba(0,255,136,0.12);
+      color: #00ff88;
+      border: 1px solid rgba(0,255,136,0.25);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #f0f6fc;
+      letter-spacing: -0.3px;
+      margin-bottom: 8px;
+    }
+    header p {
+      color: #8b949e;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 620px;
+    }
+
+    .diagram-section {
+      max-width: 960px;
+      margin: 0 auto 56px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .section-number {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(88,166,255,0.15);
+      border: 1px solid rgba(88,166,255,0.3);
+      color: #58a6ff;
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .section-meta h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f0f6fc;
+      margin-bottom: 4px;
+    }
+    .section-meta p {
+      font-size: 13px;
+      color: #8b949e;
+      line-height: 1.55;
+    }
+
+    .diagram-card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .diagram-card .diagram-inner {
+      padding: 32px 24px;
+      overflow-x: auto;
+    }
+    .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+    /* Override Mermaid's default white background */
+    .mermaid svg {
+      background: transparent !important;
+      max-width: 100%;
+    }
+
+    .legend {
+      background: #0d1117;
+      border-top: 1px solid #21262d;
+      padding: 16px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #8b949e;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .protocol-note {
+      background: rgba(88,166,255,0.06);
+      border: 1px solid rgba(88,166,255,0.18);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      color: #8b949e;
+      line-height: 1.6;
+      margin-top: 16px;
+    }
+    .protocol-note strong { color: #58a6ff; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="badge">Architecture Reference</div>
+  <h1>Certificate Flows — Intune PKI &amp; Android KeyChain</h1>
+  <p>
+    Two sequence diagrams covering (1) how Microsoft Intune provisions an X.509 client certificate
+    onto an enrolled Android device via SCEP, and (2) how a user selects and persists
+    the certificate alias inside the MRZ Scanner app for later mTLS use.
+  </p>
+</header>
+
+<!-- ── Diagram 1 ──────────────────────────────────────────────────────────── -->
+<section class="diagram-section">
+  <div class="section-header">
+    <div class="section-number">1</div>
+    <div class="section-meta">
+      <h2>Intune Certificate Deployment (SCEP / PKCS)</h2>
+      <p>
+        IT Admin configures a SCEP profile in Intune. The MDM agent on the enrolled device
+        generates a private key entirely inside the Android Keystore (never exported),
+        creates a CSR, and exchanges it with the NDES proxy. The CA signs and returns
+        the certificate, which is stored in the device keystore — accessible to apps
+        via <code>KeyChain.choosePrivateKeyAlias()</code>.
+      </p>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-inner">
+      <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Admin as 🧑‍💼 IT Admin<br/>(Intune Portal)
+    participant Intune as ☁️ Microsoft Intune<br/>(MDM Service)
+    participant MDM as 📱 MDM Agent<br/>(Android)
+    participant KS as 🔐 Android Keystore<br/>(Hardware / TEE)
+    participant NDES as 🖥️ NDES Server<br/>(SCEP Proxy)
+    participant CA as 🏛️ Certificate Authority
+
+    rect rgb(22, 27, 34)
+        Note over Admin,Intune: Phase 1 — Policy Configuration
+        Admin->>Intune: Create SCEP Certificate Profile<br/>(subject, SAN, key usage,<br/>validity period, hash algorithm)
+        Admin->>Intune: Assign profile to device group
+    end
+
+    rect rgb(22, 27, 34)
+        Note over Intune,KS: Phase 2 — Key Generation on Device
+        Intune->>MDM: Push MDM policy via APNS/FCM<br/>(SCEP URL + challenge password)
+        MDM->>KS: Generate RSA-2048 key pair<br/>(private key stays in TEE/SE — never leaves)
+        KS-->>MDM: Key pair reference (alias handle)
+        MDM->>MDM: Build PKCS#10 CSR<br/>(signed with private key reference)
+    end
+
+    rect rgb(22, 27, 34)
+        Note over MDM,CA: Phase 3 — SCEP Enrolment Exchange
+        MDM->>NDES: HTTP POST /mscep/mscep.dll<br/>PKIOperation = PKCSReq<br/>(CSR wrapped in CMS / PKCS#7,<br/>encrypted with NDES RA cert)
+        NDES->>NDES: Decrypt CMS envelope<br/>Validate SCEP challenge password
+        NDES->>CA: Submit certificate request<br/>(PKCS#10 CSR + requester identity)
+        CA->>CA: Validate request<br/>Sign X.509 certificate<br/>(subject from Intune user/device attributes)
+        CA-->>NDES: Signed X.509 certificate (DER)
+        NDES-->>MDM: SCEP CertRep response<br/>(certificate wrapped in CMS SignedData)
+    end
+
+    rect rgb(22, 27, 34)
+        Note over MDM,Intune: Phase 4 — Storage and Reporting
+        MDM->>KS: Import signed certificate<br/>(linked to existing private key by alias)
+        KS-->>MDM: Certificate stored ✓
+        MDM-->>Intune: Compliance report:<br/>Certificate installed (thumbprint, expiry)
+        Note over KS: Certificate now accessible to apps<br/>via Android KeyChain API
+    end
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#58a6ff"></div>
+        TEE = Trusted Execution Environment (hardware-backed key storage on modern Android)
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#00ff88"></div>
+        Private key never leaves the device — only the CSR (public key + metadata) is sent to the CA
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#d29922"></div>
+        NDES = Network Device Enrollment Service — Microsoft's SCEP proxy for AD CS
+      </div>
+    </div>
+  </div>
+
+  <div class="protocol-note">
+    <strong>Protocol:</strong> SCEP (RFC 8894) over HTTPS. The device CSR is wrapped in CMS
+    (Cryptographic Message Syntax / PKCS#7) and encrypted with the NDES Registration Authority
+    certificate before transmission. The challenge password is a one-time token Intune generates
+    and embeds in the MDM policy payload — the NDES server uses it to authorise the request without
+    requiring AD credentials on the device. <strong>Alternative:</strong> PKCS#12 deployment
+    (Intune encrypts the PFX with a device-specific key and delivers it via MDM) — same result in
+    Keystore, slightly different exchange; configurable per profile in Intune.
+  </div>
+</section>
+
+<!-- ── Diagram 2 ──────────────────────────────────────────────────────────── -->
+<section class="diagram-section">
+  <div class="section-header">
+    <div class="section-number">2</div>
+    <div class="section-meta">
+      <h2>In-App Certificate Alias Selection</h2>
+      <p>
+        First-launch flow: the app calls <code>KeyChain.choosePrivateKeyAlias()</code> which
+        surfaces the OS certificate picker (filtered to certificates matching the API host).
+        The selected alias is persisted in <code>SharedPreferences</code>. On all subsequent
+        launches the alias is loaded silently. When a REST API call is made, the alias is
+        passed to the native OkHttp layer which retrieves the private key and certificate chain
+        from the Keystore to perform mutual TLS.
+      </p>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-inner">
+      <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant User as 👤 User
+    participant UI as 📱 App UI<br/>(React Native)
+    participant CSvc as 🔧 CertificateService<br/>(certificate.ts)
+    participant Mod as ⚙️ AndroidKeychain<br/>(Native Module)
+    participant SP as 💾 SharedPreferences<br/>(local persistence)
+    participant OS as 🤖 Android OS<br/>(KeyChain API)
+    participant KS as 🔐 System Keystore<br/>(Intune certs)
+    participant HTTP as 🌐 OkHttp Client<br/>(mTLS — future)
+
+    rect rgb(22, 27, 34)
+        Note over User,SP: First Launch — No Certificate Selected Yet
+        User->>UI: Opens app
+        UI->>CSvc: getCertificateStatus()
+        CSvc->>Mod: getStoredAlias()
+        Mod->>SP: read "selected_certificate_alias"
+        SP-->>Mod: null
+        Mod-->>CSvc: null
+        CSvc-->>UI: status = "not_selected"
+        UI->>User: Show "Select device certificate" prompt
+    end
+
+    rect rgb(22, 27, 34)
+        Note over User,KS: Certificate Selection — OS Picker Dialog
+        User->>UI: Tap "Select Certificate"
+        UI->>CSvc: promptCertificateSelection("api.trust1team.com", 443)
+        CSvc->>Mod: selectCertificate(host, port)
+        Mod->>OS: KeyChain.choosePrivateKeyAlias()<br/>(activity, host="api.trust1team.com", port=443)
+        OS->>KS: Query certificates<br/>(filter: valid, key usage = digitalSignature,<br/>matches host/port hint)
+        KS-->>OS: Matching certificates list<br/>e.g. "CN=John Doe, O=Trust1Team, C=BE"
+        OS->>User: System certificate picker dialog<br/>(shows certificate display name + issuer)
+        User->>OS: Selects "CN=John Doe — Trust1Team CA"
+        OS->>KS: Grant app access to key pair
+        OS-->>Mod: alias = "com.mrzscanner.app_intune_cert"
+    end
+
+    rect rgb(22, 27, 34)
+        Note over Mod,UI: Persist Alias and Fetch Certificate Info
+        Mod->>SP: persist alias (SharedPreferences)
+        Mod->>OS: KeyChain.getCertificateChain(alias)
+        OS->>KS: Retrieve X.509 certificate chain
+        KS-->>OS: [leaf cert, intermediate CA, root CA]
+        OS-->>Mod: Certificate chain
+        Mod->>Mod: Parse: subject, issuer,<br/>validity dates, SHA-256 fingerprint
+        Mod-->>CSvc: CertificateInfo object
+        CSvc-->>UI: { alias, subject "CN=John Doe",<br/>issuer "O=Trust1Team CA",<br/>validTo "2029-01-01", fingerprint }
+        UI->>User: Show certificate card<br/>"John Doe · expires Jan 2029 ✓"
+    end
+
+    rect rgb(22, 27, 34)
+        Note over User,SP: Subsequent Launches — Silent Load
+        User->>UI: Reopens app
+        UI->>CSvc: getCertificateStatus()
+        CSvc->>Mod: getStoredAlias()
+        Mod->>SP: read alias
+        SP-->>Mod: "com.mrzscanner.app_intune_cert"
+        Mod->>OS: KeyChain.getPrivateKey(alias) — check still valid
+        OS-->>Mod: PrivateKey reference ✓
+        Mod-->>CSvc: alias (not null)
+        CSvc-->>UI: status = "selected"
+        Note over UI: No dialog shown — proceeds silently
+    end
+
+    rect rgb(22, 27, 34)
+        Note over UI,HTTP: REST API Call with mTLS (future implementation)
+        UI->>CSvc: getAliasForMtls()
+        CSvc-->>UI: alias
+        UI->>HTTP: setClientCertificateAlias(alias)
+        HTTP->>OS: KeyChain.getPrivateKey(alias)
+        OS->>KS: Retrieve private key reference
+        KS-->>OS: PrivateKey (stays in TEE)
+        OS-->>HTTP: PrivateKey handle
+        HTTP->>OS: KeyChain.getCertificateChain(alias)
+        OS-->>HTTP: X509Certificate[]
+        HTTP->>HTTP: Build SSLContext with custom X509KeyManager<br/>(delegates signing to Keystore — key never exported)
+        HTTP->>HTTP: HTTPS POST /api/v1/scan<br/>(TLS 1.3 + mutual auth client cert)
+        Note over HTTP: Server validates client cert against<br/>Intune-issued CA chain
+    end
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#58a6ff"></div>
+        First launch only: OS picker dialog (no subsequent prompts while alias is persisted)
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#00ff88"></div>
+        Private key never leaves Keystore — OkHttp signs via a key handle, not raw bytes
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#d29922"></div>
+        If Intune remotely revokes/wipes the cert, hasCertificate() returns false → re-prompt
+      </div>
+    </div>
+  </div>
+
+  <div class="protocol-note">
+    <strong>mTLS flow (Phase 4):</strong> the private key signing operation happens entirely inside
+    the Android Keystore's TEE. <code>OkHttp</code> builds a custom
+    <code>javax.net.ssl.X509KeyManager</code> whose <code>getPrivateKey()</code> returns the
+    Keystore-backed <code>PrivateKey</code> object — Java's TLS stack calls
+    <code>Signature.sign()</code> on it, which delegates to the TEE without ever exporting
+    raw key material. The server authenticates the client by verifying the certificate chain
+    against the Intune CA it trusts. <strong>Revocation:</strong> Intune can push an MDM command
+    to remove the certificate; the next <code>hasCertificate()</code> call will return
+    <code>false</code> and the app will re-prompt for selection.
+  </div>
+</section>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    themeVariables: {
+      background: "#161b22",
+      primaryColor: "#21262d",
+      primaryTextColor: "#e6edf3",
+      primaryBorderColor: "#30363d",
+      lineColor: "#58a6ff",
+      secondaryColor: "#161b22",
+      tertiaryColor: "#0d1117",
+      noteBkgColor: "#21262d",
+      noteTextColor: "#8b949e",
+      noteBorderColor: "#30363d",
+      actorBkg: "#21262d",
+      actorBorder: "#30363d",
+      actorTextColor: "#e6edf3",
+      actorLineColor: "#30363d",
+      signalColor: "#58a6ff",
+      signalTextColor: "#e6edf3",
+      labelBoxBkgColor: "#161b22",
+      labelBoxBorderColor: "#30363d",
+      labelTextColor: "#8b949e",
+      loopTextColor: "#8b949e",
+      activationBorderColor: "#58a6ff",
+      activationBkgColor: "rgba(88,166,255,0.1)",
+      sequenceNumberColor: "#0d1117",
+    },
+    sequence: {
+      diagramMarginX: 16,
+      diagramMarginY: 16,
+      actorMargin: 40,
+      width: 160,
+      height: 52,
+      boxMargin: 10,
+      boxTextMargin: 6,
+      noteMargin: 10,
+      messageMargin: 35,
+      mirrorActors: false,
+      bottomMarginAdj: 10,
+      useMaxWidth: true,
+      rightAngles: false,
+      showSequenceNumbers: true,
+    },
+  });
+</script>
+</body>
+</html>
