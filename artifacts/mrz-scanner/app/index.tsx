@@ -575,10 +575,10 @@ function NativeScannerUI() {
       // Belgian eID 1.8 — anonymised synthetic specimen (checksums valid)
       // TD1 format: 3 × 30 chars
       // Line 1: type(ID) + country(BEL) + doc#(592006H81) + check(4) + optional(15×<)
-      // Line 2: DOB(800101)+chk(4) + sex(M) + expiry(290101)+chk(9) + nat(BEL) + opt + composite(0)
-      // Line 3: surname<<given names
+      // Line 2: DOB(800101)+chk(4) + sex(M) + expiry(290101)+chk(9) + nat(BEL) + opt + composite(6)
+      // Line 3: surname<<given names  (all exactly 30 chars, all checksums verified)
       setManualInput(
-        "IDBEL592006H814<<<<<<<<<<<<<<<\n8001014M2901019BEL<<<<<<<<<<<0\nJANSSEN<<JAN<PIETER<<<<<<<<<<<<"
+        "IDBEL592006H814<<<<<<<<<<<<<<<\n8001014M2901019BEL<<<<<<<<<<<6\nJANSSEN<<JAN<PIETER<<<<<<<<<<<"
       );
     } else {
       // ICAO 9303 TD1 reference specimen (generic ID cards)
