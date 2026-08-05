@@ -29,21 +29,74 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import { router, useFocusEffect } from "expo-router";
 import { ScanOverlay, getMRZZone } from "@/components/ScanOverlay";
-import { parseMRZ, extractMRZFromText, ParsedMRZ, MRZVoteAccumulator } from "@/lib/mrz";
+import { parseMRZ, extractMRZFromText, extractMRZFromLines, ParsedMRZ, MRZVoteAccumulator } from "@/lib/mrz";
 import { setLastResult } from "@/lib/resultStore";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // On-device OCR — Google ML Kit (Android) / Apple Vision (iOS)
 // ─────────────────────────────────────────────────────────────────────────────
-async function performLocalOCR(imageUri: string): Promise<string | null> {
+
+/**
+ * Structured OCR result.  `lines` comes from ML Kit's block→line hierarchy
+ * and is preferred over splitting `text` on newlines because ML Kit keeps
+ * characters that share a text baseline together even when the `<` filler
+ * chars cause word-boundary splits in the raw text blob.
+ */
+interface OCRResult {
+  text: string;
+  /** Each entry is one ML Kit "line" (a horizontal run of text). */
+  lines: string[];
+}
+
+async function performLocalOCR(imageUri: string): Promise<OCRResult | null> {
   if (Platform.OS === "web") return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { default: TextRecognition } = require("@react-native-ml-kit/text-recognition") as {
-      default: { recognize: (uri: string) => Promise<{ text: string }> };
+      default: {
+        recognize: (uri: string) => Promise<{
+          text: string;
+          // ML Kit v2 block/line structure (present on Android + iOS)
+          blocks?: Array<{
+            text: string;
+            lines?: Array<{ text: string }>;
+          }>;
+        }>;
+      };
     };
+
     const result = await TextRecognition.recognize(imageUri);
-    return result?.text || null;
+    if (!result) return null;
+
+    // Collect line-level text from the block hierarchy.
+    // Each ML Kit "line" is a horizontal baseline run — far more reliable than
+    // splitting result.text on \n, especially for OCR-B MRZ text where `<`
+    // filler may cause ML Kit to insert spurious word/line breaks.
+    const structuredLines: string[] = [];
+    if (Array.isArray(result.blocks)) {
+      for (const block of result.blocks) {
+        if (Array.isArray(block.lines)) {
+          for (const line of block.lines) {
+            if (line.text) structuredLines.push(line.text);
+          }
+        } else if (block.text) {
+          structuredLines.push(block.text);
+        }
+      }
+    }
+
+    const text = result.text ?? "";
+    const lines = structuredLines.length > 0
+      ? structuredLines
+      : text.split(/[\n\r]+/).filter(Boolean);
+
+    // Debug: log raw ML Kit output so we can diagnose OCR issues
+    console.log(
+      `[MRZ] ML Kit raw — ${lines.length} lines, total ${text.length} chars`,
+      lines.map((l) => `"${l.substring(0, 40)}"`).join(" | ")
+    );
+
+    return { text, lines };
   } catch (e) {
     console.warn("[MRZ] ML Kit OCR error:", e);
     return null;
@@ -357,25 +410,41 @@ function NativeScannerUI() {
         await Promise.all(
           rawFrames.map(async (uri) => {
             try {
-              // Pass 1: tight crop
-              const croppedUri = await cropToMRZ(uri);
-              let text = await performLocalOCR(croppedUri);
-              let lines = text ? extractMRZFromText(text) : null;
+              /**
+               * MRZ line extraction strategy (in priority order):
+               *  1. extractMRZFromLines(ocr.lines) — uses ML Kit's block/line
+               *     hierarchy; best at keeping each MRZ row intact.
+               *  2. extractMRZFromText(ocr.text)   — falls back to the raw
+               *     text blob split on newlines; catches cases where ML Kit
+               *     returns a clean multi-line string.
+               *  Both are tried on the tight crop first, then on the full frame.
+               */
+              const tryExtract = (ocr: OCRResult | null): string[] | null => {
+                if (!ocr) return null;
+                return extractMRZFromLines(ocr.lines) ?? extractMRZFromText(ocr.text);
+              };
 
-              // Pass 2: full frame (handles slight misalignment)
+              // Pass 1: tight MRZ-strip crop
+              const croppedUri = await cropToMRZ(uri);
+              let ocr = await performLocalOCR(croppedUri);
+              let lines = tryExtract(ocr);
+
+              // Pass 2: full frame (handles slight misalignment / tall card)
               if (!lines) {
                 const fullUri = await fullFrameResize(uri);
-                text = await performLocalOCR(fullUri);
-                lines = text ? extractMRZFromText(text) : null;
+                ocr = await performLocalOCR(fullUri);
+                lines = tryExtract(ocr);
               }
 
               if (lines) {
                 accumulator.addLines(lines);
                 burstHits++;
                 console.log(
-                  `[MRZ] frame: ${lines.length} lines → total ${accumulator.frameCount} frames`,
-                  lines.map(l => l.substring(0, 15)).join(" | ")
+                  `[MRZ] ✓ frame hit — ${lines.length} lines, ${accumulator.frameCount} total frames`,
+                  lines.map((l) => l.substring(0, 20)).join(" | ")
                 );
+              } else {
+                console.log("[MRZ] ✗ frame miss — no MRZ lines found");
               }
             } catch (e) {
               console.warn("[MRZ] frame error:", e);
@@ -498,10 +567,21 @@ function NativeScannerUI() {
     showResultScreen(parsed);
   }, [manualInput, showResultScreen]);
 
-  const insertSample = useCallback((type: "passport" | "id") => {
+  const insertSample = useCallback((type: "passport" | "id" | "be-eid") => {
     if (type === "passport") {
+      // ICAO 9303 TD3 reference specimen (passports)
       setManualInput("P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<1");
+    } else if (type === "be-eid") {
+      // Belgian eID 1.8 — anonymised synthetic specimen (checksums valid)
+      // TD1 format: 3 × 30 chars
+      // Line 1: type(ID) + country(BEL) + doc#(592006H81) + check(4) + optional(15×<)
+      // Line 2: DOB(800101)+chk(4) + sex(M) + expiry(290101)+chk(9) + nat(BEL) + opt + composite(0)
+      // Line 3: surname<<given names
+      setManualInput(
+        "IDBEL592006H814<<<<<<<<<<<<<<<\n8001014M2901019BEL<<<<<<<<<<<0\nJANSSEN<<JAN<PIETER<<<<<<<<<<<<"
+      );
     } else {
+      // ICAO 9303 TD1 reference specimen (generic ID cards)
       setManualInput("I<UTOD231458907<<<<<<<<<<<<<<<\n7408122F1204159UTO<<<<<<<<<<<6\nERIKSSON<<ANNA<MARIA<<<<<<<<<<"    );
     }
   }, []);
@@ -687,7 +767,7 @@ interface ManualEntryModalProps {
   onChangeText: (text: string) => void;
   onClose: () => void;
   onParse: () => void;
-  onInsertSample: (type: "passport" | "id") => void;
+  onInsertSample: (type: "passport" | "id" | "be-eid") => void;
 }
 
 function ManualEntryModal({ visible, value, onChangeText, onClose, onParse, onInsertSample }: ManualEntryModalProps) {
@@ -722,6 +802,13 @@ function ManualEntryModal({ visible, value, onChangeText, onClose, onParse, onIn
             style={({ pressed }) => [m.sampleBtn, { opacity: pressed ? 0.7 : 1 }]}
           >
             <Text style={m.sampleBtnText}>ID Card (TD1)</Text>
+          </Pressable>
+          <Pressable
+            testID="sample-be-eid"
+            onPress={() => onInsertSample("be-eid")}
+            style={({ pressed }) => [m.sampleBtn, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <Text style={m.sampleBtnText}>Belgian eID</Text>
           </Pressable>
         </View>
         <TextInput
