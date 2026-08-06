@@ -79,7 +79,7 @@ export function ScanOverlay({ scanning, detected }: ScanOverlayProps) {
     }
   }, [detected, pulseAnim, glowAnim]);
 
-  const borderColor = detected ? "#00FF88" : "#58A6FF";
+  const borderColor = detected ? "#84BD00" : "#009CA6";
   const scanLineY   = scanLineAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, zone.height - 2],
@@ -121,7 +121,7 @@ export function ScanOverlay({ scanning, detected }: ScanOverlayProps) {
         {/* Glow fill on detect */}
         {detected && (
           <Animated.View
-            style={[StyleSheet.absoluteFill, { backgroundColor: "#00FF88", opacity: glowOpacity }]}
+            style={[StyleSheet.absoluteFill, { backgroundColor: "#84BD00", opacity: glowOpacity }]}
           />
         )}
 
