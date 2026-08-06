@@ -161,6 +161,13 @@ function validateField(
   checkChar: string,
   opts: { isDate?: boolean } = {}
 ): { valid: boolean; corrected: string } {
+  // ICAO 9303 §4.2.9: a check digit of '<' means the field has no check digit.
+  // Belgian eID (and some other TD1 cards) use '<' at the document-number
+  // check position. Treat this as "unchecked but valid" — never as an error.
+  // The composite check digit (which DOES cover this field) still catches
+  // transcription errors end-to-end.
+  if (checkChar === "<") return { valid: true, corrected: raw };
+
   // 1. Direct checksum
   if (computeCheckDigit(raw) === checkChar) return { valid: true, corrected: raw };
 
