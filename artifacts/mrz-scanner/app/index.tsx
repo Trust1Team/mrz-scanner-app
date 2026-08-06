@@ -153,7 +153,7 @@ function WebParserUI() {
       >
         <View style={webStyles.header}>
           <View style={webStyles.iconBox}>
-            <Feather name="credit-card" size={32} color="#00FF88" />
+            <Feather name="credit-card" size={32} color="#009CA6" />
           </View>
           <Text style={webStyles.title}>MRZ Scanner</Text>
           <Text style={webStyles.subtitle}>
@@ -170,7 +170,7 @@ function WebParserUI() {
               onPress={() => insertSample("passport")}
               style={({ pressed }) => [webStyles.sampleBtn, { opacity: pressed ? 0.7 : 1 }]}
             >
-              <Feather name="book-open" size={14} color="#00FF88" />
+              <Feather name="book-open" size={14} color="#009CA6" />
               <Text style={webStyles.sampleBtnText}>Passport (TD3)</Text>
             </Pressable>
             <Pressable
@@ -178,7 +178,7 @@ function WebParserUI() {
               onPress={() => insertSample("id")}
               style={({ pressed }) => [webStyles.sampleBtn, { opacity: pressed ? 0.7 : 1 }]}
             >
-              <Feather name="credit-card" size={14} color="#00FF88" />
+              <Feather name="credit-card" size={14} color="#009CA6" />
               <Text style={webStyles.sampleBtnText}>ID Card (TD1)</Text>
             </Pressable>
           </View>
@@ -196,7 +196,7 @@ function WebParserUI() {
             placeholder={
               "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<1"
             }
-            placeholderTextColor="#444"
+            placeholderTextColor="#A0B4B5"
             autoCapitalize="characters"
             autoCorrect={false}
             spellCheck={false}
@@ -211,12 +211,12 @@ function WebParserUI() {
           onPress={handleParse}
           style={({ pressed }) => [webStyles.parseBtn, { opacity: pressed ? 0.85 : 1 }]}
         >
-          <Feather name="search" size={18} color="#0D1117" />
+          <Feather name="search" size={18} color="#FFFFFF" />
           <Text style={webStyles.parseBtnText}>Parse MRZ</Text>
         </Pressable>
 
         <View style={webStyles.infoBox}>
-          <Feather name="info" size={14} color="#58A6FF" />
+          <Feather name="info" size={14} color="#009CA6" />
           <Text style={webStyles.infoText}>
             Camera scanning runs on-device (no network required) using Google ML Kit on Android and Apple Vision on iOS.
           </Text>
@@ -227,46 +227,46 @@ function WebParserUI() {
 }
 
 const webStyles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0D1117" },
+  root: { flex: 1, backgroundColor: "#FFFFFF" },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 24, paddingBottom: 32, gap: 20 },
   header: { alignItems: "center", paddingVertical: 16, gap: 10 },
   iconBox: {
     width: 72, height: 72, borderRadius: 18,
-    backgroundColor: "rgba(0,255,136,0.12)",
+    backgroundColor: "rgba(0,156,166,0.12)",
     alignItems: "center", justifyContent: "center",
   },
-  title: { color: "#FFFFFF", fontSize: 26, fontWeight: "700" as const, letterSpacing: 0.3 },
-  subtitle: { color: "#8B949E", fontSize: 14, textAlign: "center", lineHeight: 21 },
+  title: { color: "#1A2A2A", fontSize: 26, fontWeight: "700" as const, letterSpacing: 0.3 },
+  subtitle: { color: "#5A6E6E", fontSize: 14, textAlign: "center", lineHeight: 21 },
   sampleSection: { gap: 10 },
-  sampleLabel: { color: "#8B949E", fontSize: 13 },
+  sampleLabel: { color: "#5A6E6E", fontSize: 13 },
   sampleRow: { flexDirection: "row", gap: 10 },
   sampleBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, backgroundColor: "#161B22", borderWidth: 1, borderColor: "#30363D",
+    gap: 6, backgroundColor: "#F0F8F9", borderWidth: 1, borderColor: "#C5DEE0",
     borderRadius: 10, paddingVertical: 10,
   },
-  sampleBtnText: { color: "#00FF88", fontSize: 13, fontWeight: "500" as const },
+  sampleBtnText: { color: "#009CA6", fontSize: 13, fontWeight: "500" as const },
   inputSection: { gap: 8 },
-  inputLabel: { color: "#C9D1D9", fontSize: 13, fontWeight: "600" as const, letterSpacing: 0.5 },
+  inputLabel: { color: "#1A2A2A", fontSize: 13, fontWeight: "600" as const, letterSpacing: 0.5 },
   input: {
-    backgroundColor: "#161B22", borderRadius: 12, borderWidth: 1, borderColor: "#30363D",
-    color: "#FFFFFF", fontSize: 11, padding: 14, minHeight: 120,
+    backgroundColor: "#F0F8F9", borderRadius: 12, borderWidth: 1, borderColor: "#C5DEE0",
+    color: "#1A2A2A", fontSize: 11, padding: 14, minHeight: 120,
     letterSpacing: 0.3, textAlignVertical: "top",
   },
-  formatHint: { color: "#8B949E", fontSize: 11, lineHeight: 18 },
+  formatHint: { color: "#5A6E6E", fontSize: 11, lineHeight: 18 },
   parseBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 8, backgroundColor: "#00FF88", borderRadius: 14, paddingVertical: 15,
+    gap: 8, backgroundColor: "#009CA6", borderRadius: 14, paddingVertical: 15,
   },
-  parseBtnText: { color: "#0D1117", fontSize: 16, fontWeight: "600" as const },
+  parseBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" as const },
   infoBox: {
     flexDirection: "row", gap: 10,
-    backgroundColor: "rgba(88,166,255,0.08)", borderRadius: 10,
-    borderWidth: 1, borderColor: "rgba(88,166,255,0.2)",
+    backgroundColor: "rgba(0,156,166,0.08)", borderRadius: 10,
+    borderWidth: 1, borderColor: "rgba(0,156,166,0.2)",
     padding: 12, alignItems: "flex-start",
   },
-  infoText: { color: "#8B949E", fontSize: 12, lineHeight: 18, flex: 1 },
+  infoText: { color: "#5A6E6E", fontSize: 12, lineHeight: 18, flex: 1 },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -595,7 +595,7 @@ function NativeScannerUI() {
   if (!permission) {
     return (
       <View style={[s.centered, { backgroundColor: "#000" }]}>
-        <ActivityIndicator color="#00FF88" size="large" />
+        <ActivityIndicator color="#009CA6" size="large" />
       </View>
     );
   }
@@ -604,7 +604,7 @@ function NativeScannerUI() {
     return (
       <View style={[s.permissionContainer, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20 }]}>
         <View style={s.permissionIcon}>
-          <Feather name="camera" size={48} color="#00FF88" />
+          <Feather name="camera" size={48} color="#009CA6" />
         </View>
         <Text style={s.permissionTitle}>Camera Access Required</Text>
         <Text style={s.permissionSubtitle}>
@@ -629,7 +629,7 @@ function NativeScannerUI() {
           style={[s.manualBtn, { marginTop: 12 }]}
           onPress={() => setShowManualEntry(true)}
         >
-          <Feather name="edit-2" size={16} color="#8B949E" />
+          <Feather name="edit-2" size={16} color="#5A6E6E" />
           <Text style={s.manualBtnText}>Test with manual input</Text>
         </Pressable>
         <ManualEntryModal
@@ -686,13 +686,13 @@ function NativeScannerUI() {
           style={({ pressed }) => [
             s.iconBtn,
             {
-              backgroundColor: torchOn ? "rgba(0,255,136,0.2)" : "rgba(255,255,255,0.12)",
-              borderColor: torchOn ? "#00FF88" : "transparent",
+              backgroundColor: torchOn ? "rgba(132,189,0,0.25)" : "rgba(255,255,255,0.12)",
+              borderColor: torchOn ? "#84BD00" : "transparent",
               opacity: pressed ? 0.7 : 1,
             },
           ]}
         >
-          <Feather name={torchOn ? "zap" : "zap-off"} size={20} color={torchOn ? "#00FF88" : "#FFFFFF"} />
+          <Feather name={torchOn ? "zap" : "zap-off"} size={20} color={torchOn ? "#84BD00" : "#FFFFFF"} />
         </Pressable>
       </View>
 
@@ -736,15 +736,15 @@ function NativeScannerUI() {
             isLandscape ? s.pauseBtnSmall : s.pauseBtn,
             {
               opacity: pressed || isFound ? 0.5 : 1,
-              backgroundColor: isScanning ? "rgba(255,255,255,0.18)" : "rgba(0,255,136,0.25)",
-              borderColor: isScanning ? "rgba(255,255,255,0.4)" : "#00FF88",
+              backgroundColor: isScanning ? "rgba(255,255,255,0.18)" : "rgba(132,189,0,0.28)",
+              borderColor: isScanning ? "rgba(255,255,255,0.4)" : "#84BD00",
             },
           ]}
         >
           <Feather
             name={isScanning ? "pause" : "play"}
             size={isLandscape ? 20 : 26}
-            color={isScanning ? "#FFFFFF" : "#00FF88"}
+            color={isScanning ? "#FFFFFF" : "#84BD00"}
           />
         </Pressable>
 
@@ -788,7 +788,7 @@ function ManualEntryModal({ visible, value, onChangeText, onClose, onParse, onIn
         <View style={m.header}>
           <Text style={m.title}>Manual MRZ Entry</Text>
           <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-            <Feather name="x" size={22} color="#8B949E" />
+            <Feather name="x" size={22} color="#5A6E6E" />
           </Pressable>
         </View>
         <Text style={m.subtitle}>Paste MRZ text or load a sample to test the parser.</Text>
@@ -840,7 +840,7 @@ function ManualEntryModal({ visible, value, onChangeText, onClose, onParse, onIn
           onPress={onParse}
           style={({ pressed }) => [m.parseBtn, { opacity: pressed ? 0.85 : 1 }]}
         >
-          <Feather name="check" size={18} color="#0D1117" />
+          <Feather name="check" size={18} color="#FFFFFF" />
           <Text style={m.parseBtnText}>Parse MRZ</Text>
         </Pressable>
       </View>
@@ -849,25 +849,25 @@ function ManualEntryModal({ visible, value, onChangeText, onClose, onParse, onIn
 }
 
 const m = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0D1117", paddingHorizontal: 20, gap: 14 },
+  container: { flex: 1, backgroundColor: "#FFFFFF", paddingHorizontal: 20, gap: 14 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  title: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" as const },
-  subtitle: { color: "#8B949E", fontSize: 13, lineHeight: 20 },
+  title: { color: "#1A2A2A", fontSize: 20, fontWeight: "700" as const },
+  subtitle: { color: "#5A6E6E", fontSize: 13, lineHeight: 20 },
   sampleRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  sampleLabel: { color: "#8B949E", fontSize: 13 },
-  sampleBtn: { backgroundColor: "#21262D", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  sampleBtnText: { color: "#00FF88", fontSize: 13, fontWeight: "500" as const },
+  sampleLabel: { color: "#5A6E6E", fontSize: 13 },
+  sampleBtn: { backgroundColor: "#F0F8F9", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  sampleBtnText: { color: "#009CA6", fontSize: 13, fontWeight: "500" as const },
   input: {
-    backgroundColor: "#161B22", borderRadius: 12, borderWidth: 1, borderColor: "#30363D",
-    color: "#FFFFFF", fontSize: 11, padding: 14, minHeight: 120,
+    backgroundColor: "#F0F8F9", borderRadius: 12, borderWidth: 1, borderColor: "#C5DEE0",
+    color: "#1A2A2A", fontSize: 11, padding: 14, minHeight: 120,
     letterSpacing: 0.3, textAlignVertical: "top",
   },
-  formatHint: { color: "#8B949E", fontSize: 12, lineHeight: 20 },
+  formatHint: { color: "#5A6E6E", fontSize: 12, lineHeight: 20 },
   parseBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 8, backgroundColor: "#00FF88", borderRadius: 14, paddingVertical: 15,
+    gap: 8, backgroundColor: "#009CA6", borderRadius: 14, paddingVertical: 15,
   },
-  parseBtnText: { color: "#0D1117", fontSize: 16, fontWeight: "600" as const },
+  parseBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" as const },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -939,23 +939,23 @@ const s = StyleSheet.create({
   appTitleSmall: { fontSize: 14 },
 
   permissionContainer: {
-    flex: 1, backgroundColor: "#0D1117",
+    flex: 1, backgroundColor: "#FFFFFF",
     alignItems: "center", justifyContent: "center",
     paddingHorizontal: 32, gap: 12,
   },
   permissionIcon: {
     width: 96, height: 96, borderRadius: 24,
-    backgroundColor: "rgba(0,255,136,0.12)",
+    backgroundColor: "rgba(0,156,166,0.12)",
     alignItems: "center", justifyContent: "center",
     marginBottom: 8,
   },
-  permissionTitle: { color: "#FFFFFF", fontSize: 22, fontWeight: "700" as const, textAlign: "center" },
-  permissionSubtitle: { color: "#8B949E", fontSize: 15, textAlign: "center", lineHeight: 22 },
+  permissionTitle: { color: "#1A2A2A", fontSize: 22, fontWeight: "700" as const, textAlign: "center" },
+  permissionSubtitle: { color: "#5A6E6E", fontSize: 15, textAlign: "center", lineHeight: 22 },
   permissionBtn: {
-    backgroundColor: "#00FF88", paddingHorizontal: 32,
+    backgroundColor: "#009CA6", paddingHorizontal: 32,
     paddingVertical: 14, borderRadius: 14, marginTop: 8,
   },
-  permissionBtnText: { color: "#0D1117", fontSize: 16, fontWeight: "600" as const },
+  permissionBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" as const },
   manualBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 10 },
-  manualBtnText: { color: "#8B949E", fontSize: 14 },
+  manualBtnText: { color: "#5A6E6E", fontSize: 14 },
 });
