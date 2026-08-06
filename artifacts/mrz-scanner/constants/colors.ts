@@ -1,38 +1,46 @@
+/**
+ * Design tokens — Limburg.net brand palette.
+ *
+ * Primary  : #009CA6  (teal  — nav bar, primary actions, info)
+ * Accent   : #84BD00  (lime  — logo, CTAs, success states)
+ * Surface  : #FFFFFF / #F0F8F9 (white + very-light-teal cards)
+ * Text     : #1A2A2A (dark)  /  #5A6E6E (muted)
+ */
 const colors = {
   light: {
-    text: "#FFFFFF",
-    tint: "#00FF88",
+    text: "#1A2A2A",
+    tint: "#009CA6",
 
-    background: "#0D1117",
-    foreground: "#FFFFFF",
+    background: "#FFFFFF",
+    foreground: "#1A2A2A",
 
-    card: "#161B22",
-    cardForeground: "#FFFFFF",
+    card: "#FFFFFF",
+    cardForeground: "#1A2A2A",
 
-    primary: "#00FF88",
-    primaryForeground: "#0D1117",
+    primary: "#009CA6",
+    primaryForeground: "#FFFFFF",
 
-    secondary: "#21262D",
-    secondaryForeground: "#C9D1D9",
+    secondary: "#E8F6F7",
+    secondaryForeground: "#1A2A2A",
 
-    muted: "#21262D",
-    mutedForeground: "#8B949E",
+    muted: "#F0F8F9",
+    mutedForeground: "#5A6E6E",
 
-    accent: "#00FF88",
-    accentForeground: "#0D1117",
+    accent: "#84BD00",
+    accentForeground: "#FFFFFF",
 
-    destructive: "#F85149",
+    destructive: "#D32F2F",
     destructiveForeground: "#FFFFFF",
 
-    border: "#30363D",
-    input: "#21262D",
+    border: "#C5DEE0",
+    input: "#F0F8F9",
 
-    success: "#00FF88",
-    warning: "#F0883E",
-    info: "#58A6FF",
+    success: "#84BD00",
+    warning: "#E08A00",
+    info: "#009CA6",
 
-    scanOverlay: "rgba(0, 255, 136, 0.15)",
-    scanBorder: "#00FF88",
+    scanOverlay: "rgba(0, 156, 166, 0.15)",
+    scanBorder: "#009CA6",
     cameraBackground: "#000000",
   },
 
