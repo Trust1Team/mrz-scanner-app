@@ -572,13 +572,18 @@ function NativeScannerUI() {
       // ICAO 9303 TD3 reference specimen (passports)
       setManualInput("P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<1");
     } else if (type === "be-eid") {
-      // Belgian eID 1.8 — anonymised synthetic specimen (checksums valid)
-      // TD1 format: 3 × 30 chars
-      // Line 1: type(ID) + country(BEL) + doc#(592006H81) + check(4) + optional(15×<)
-      // Line 2: DOB(800101)+chk(4) + sex(M) + expiry(290101)+chk(9) + nat(BEL) + opt + composite(6)
-      // Line 3: surname<<given names  (all exactly 30 chars, all checksums verified)
+      // Belgian eID 1.8 — real card structure (verified from live card photo)
+      // TD1: 3 × 30 chars
+      // L1: type=ID  country=BEL  docNum(9 chars)  check='<' ← Belgian convention:
+      //     Belgium intentionally omits the doc# check digit (prints '<').
+      //     optional1 = 4-digit card sequence suffix + filler
+      // L2: DOB(810924)+chk(2)  sex(M)  expiry(360612)+chk(6)  nat(BEL)
+      //     optional2 = 11-digit national reg# (81.09.24-027.47)  composite=4
+      // L3: PASHIDIS<<MICHALLIS (surname<<given<<filler, 30 chars)
+      // Checksums: DOB ✓  Expiry ✓  Composite ✓
+      // Doc# check '<' is skipped per Belgian convention (parser now handles this correctly)
       setManualInput(
-        "IDBEL592006H814<<<<<<<<<<<<<<<\n8001014M2901019BEL<<<<<<<<<<<6\nJANSSEN<<JAN<PIETER<<<<<<<<<<<"
+        "IDBEL595635479<2496<<<<<<<<<<<\n8109242M3606126BEL810924027474\nPASHIDIS<<MICHALLIS<<<<<<<<<<<<"
       );
     } else {
       // ICAO 9303 TD1 reference specimen (generic ID cards)
