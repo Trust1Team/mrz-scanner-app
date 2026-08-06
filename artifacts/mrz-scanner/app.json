@@ -6,12 +6,12 @@
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "mrz-scanner",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0D1117"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": false,
@@ -47,7 +47,7 @@
     "experiments": {
       "typedRoutes": true
     },
-    "owner": "michallis",
+    "owner": "trust1team",
     "extra": {
       "eas": {
         "projectId": "8536a670-85e2-484d-ae59-7d683365ba9d"
